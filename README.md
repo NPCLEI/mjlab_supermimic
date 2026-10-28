@@ -234,3 +234,32 @@ Remaining gap: the real return oscillates around +0.1..+0.3 and does not climb t
 PPO reaches. The imagined return (0.9) stays far above the real one, i.e. the policy exploits the
 world model's optimism -- a model-based limitation rather than a task-integration defect. Motion
 tracking does not show it because the reference motion supplies the target behaviour in the data.
+## Whole-library results (22,246 clips, 8 h, one A100)
+
+Trained on the entire `motions_all_sitfiltered` library (22,246 clips / 11.3M frames / 313 hours),
+packed as `motion_lib_all.pt` (ref 71 dims + the dataset's own 14 body arrays, fp16, 5.74 GB).
+
+| evaluation set | normalised return | failures |
+|---|---:|---:|
+| 300-clip in-distribution subset, after 7.4 h (best ckpt 22000) | **0.8248** | 8/300 |
+| same, final ckpt 24000 | 0.8215 | 10/300 |
+| 6 long fall-and-get-up clips (from the 125 fall clips in the library) | **0.6703** | 6/6 |
+
+Reference points: a model trained on *only* those 300 clips for 3 h reaches 0.7156, and a model
+trained on a single clip reaches 0.849 on that clip alone. So the generalist beats the 300-clip
+specialist by 15% while covering 74x more motions, and rare classes (fall/get-up is 0.6% of the
+library) are its clear weak spot: 0.670 vs 0.825, and every one of those six clips fails partway.
+
+World model on this run: `nse1 0.0047`, `nse8 0.0094` (paper reports 0.007-0.011 for 8 steps).
+
+Two practical notes that cost real time:
+
+* **enable TF32 on an A100.** Its fp32 peak (19.5 TFLOPS) is four times *below* an RTX 4090 (82.6),
+  so plain fp32 gains nothing from the bigger card. With `TORCH_ALLOW_TF32_CUBLAS_OVERRIDE=1` the
+  per-sample update cost drops from 1.44 ms to 0.61 ms, which is what lets the policy batch double.
+* **pack the dataset's body arrays, do not recompute them.** The compact format alone stores only
+  `ref`, and `bodies()` then runs differentiable FK for every imagined step.
+
+Rare classes need resampling: sampling is uniform over clips, so a class that is 0.6% of the library
+never gets enough samples regardless of `sampling_mode=return` (which weights by return, not by
+class frequency).

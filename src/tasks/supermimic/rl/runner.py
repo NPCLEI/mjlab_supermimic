@@ -433,6 +433,8 @@ class SuperMimicRunner:
           + (f"rm mse {m_r['reward_mse']:.3f} mae {m_r['reward_mae']:.4f} corr {m_r['reward_corr']:+.2f} | "
              if self.reward_opt is not None and "m_r" in dir() else "") +
           f"wm nse1 {agg.get('wm/nse_1step', float('nan')) / max(agg_n, 1):.4f} "
+          f"tbce {agg.get('wm/term_bce', float('nan')) / max(agg_n, 1):.3f} "
+          f"tacc {agg.get('wm/term_acc', float('nan')) / max(agg_n, 1):.2f} "
           f"nse8 {(float(err[-1]) if err is not None else float('nan')):.4f} | "
           f"imag_ret {agg.get('policy/imag_return_undisc', float('nan')) / max(agg_n, 1):.3f} "
           f"surv {agg.get('policy/imag_survival_H', float('nan')) / max(agg_n, 1):.3f} | "

@@ -58,6 +58,7 @@ register_supermimic_task(
     env=EnvCfg(replay_capacity=1000),
     # sized for a 22 GB card shared with other jobs
     world_model=WorldModelCfg(
+      term_loss_weight=5.0,  # the termination head under-predicted; imagination was optimistic
       state_spec=StateSpecCfg(
         # (root pos, root quat, joints, root lin vel, root ang vel, joint vel)
         err_scale=(0.05, 0.1, 0.5, 1.0, 1.0, 12.0),
