@@ -30,6 +30,12 @@ class SuperMimicCfg(TrainConfig):
 
   #: which adapter to build when using ``scripts/train_supermimic.py``
   adapter: str = "tracking"
+  #: mjlab-compatibility fields (read by scripts/train.py for any runner_cls)
+  clip_actions: bool = True
+  max_iterations: int = 20000
+  experiment_name: str = ""
+  wandb_tags: list[str] = field(default_factory=list)
+  logger: str = "tensorboard"
   #: mjlab task id used by the "velocity" adapter
   task_id: str = "Mjlab-Velocity-Flat-Unitree-G1"
   #: override the policy/critic observation size (normally inferred from the adapter)

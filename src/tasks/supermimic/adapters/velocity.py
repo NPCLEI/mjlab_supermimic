@@ -76,7 +76,9 @@ class VelocityHeads:
   def _split(s: torch.Tensor):
     return s[..., 0:3], s[..., 3:7], s[..., 7:36], s[..., 36:39], s[..., 39:42], s[..., 42:71]
 
-  def _command(self) -> torch.Tensor:
+  def _command(self, xi: torch.Tensor | None = None) -> torch.Tensor:
+    if xi is not None and xi.shape[-1] >= 4:
+      return xi[..., 1:4]
     return self.env.command_manager.get_term(self.command_name).command
 
   # ------------------------------------------------------------------ analytic observation
@@ -87,7 +89,7 @@ class VelocityHeads:
     command(4) | joint_pos-default(29) | joint_vel(29) | actions(29).
     """
     _, q, qj, _, w, qd = self._split(s_next)
-    obs = torch.cat([w, projected_gravity(q), self._command().to(s_next.dtype), qj - self.default_joint_pos, qd, prev_action], dim=-1)
+    obs = torch.cat([w, projected_gravity(q), self._command(xi).to(s_next.dtype).expand(s_next.shape[0], -1) if xi is None else self._command(xi).to(s_next.dtype), qj - self.default_joint_pos, qd, prev_action], dim=-1)
     if obs.shape[-1] != self.actor_dim:
       raise RuntimeError(f"analytic observation {obs.shape[-1]} != actor group {self.actor_dim}")
     return obs
@@ -115,10 +117,10 @@ class VelocityHeads:
       "ang_vel": w[:, None, :],
     }
 
-  def reward(self, s_next, action, prev_action, ref, bodies=None) -> dict[str, torch.Tensor]:
+  def reward(self, s_next, action, prev_action, ref, bodies=None, xi=None) -> dict[str, torch.Tensor]:
     _, q, qj, v, w, qd = self._split(s_next)
     g = projected_gravity(q)
-    cmd = self._command().to(s_next.dtype)
+    cmd = self._command(xi).to(s_next.dtype)
     dt = self.dt
     terms = {}
     terms["track_linear_velocity"] = dt * self.weights["track_linear_velocity"] * torch.exp(
@@ -253,9 +255,13 @@ class VelocityAdapter:
     return z, z
 
   def xi(self, env):
+    """xi[:, 0] = friction scale, xi[:, 1:4] = the velocity command (per row)."""
     n = int(env.num_envs)
     xi = torch.zeros(n, 33, device=self._lib.device)
     xi[:, 0] = 1.0
+    cmd = self._lib._cmd()
+    if cmd.shape[-1] >= 3 and n == cmd.shape[0]:
+      xi[:, 1:4] = cmd[:, :3]
     return xi
 
   def on_reset(self, env, env_ids=None) -> None:

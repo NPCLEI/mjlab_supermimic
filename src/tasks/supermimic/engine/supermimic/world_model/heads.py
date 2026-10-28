@@ -58,6 +58,9 @@ def flatten_history_term_major(hist: torch.Tensor) -> torch.Tensor:
     if hist.shape[0] == 1:
         # no history: the observation layout is task-defined, just hand back the frame
         return hist[0]
+    if hist.shape[-1] != sum(d for _, d in OBS_TERMS):
+        # task-defined layout: concatenate frames, frame-major
+        return hist.transpose(0, 1).reshape(hist.shape[1], -1)
     """(H, N, 93) oldest→newest  ->  (N, 930) in mjlab's term-major layout [A_t0..A_tH-1, B_t0..]."""
     H, N, _ = hist.shape
     chunks = []

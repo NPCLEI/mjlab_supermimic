@@ -38,7 +38,10 @@ class ImagStep:
         ref = ReferenceFrame(ref_body_pos, ref_body_quat, ref_body_lin, ref_body_ang, ref_root_pos, ref_root_quat)
         s_next = self.wm.step(s, a, xi)
         bodies = self.wm.heads.robot_bodies(s_next)
-        terms = self.wm.heads.reward(s_next, a, a_prev, ref, bodies)
+        try:
+            terms = self.wm.heads.reward(s_next, a, a_prev, ref, bodies, xi=xi)
+        except TypeError:
+            terms = self.wm.heads.reward(s_next, a, a_prev, ref, bodies)
         r = terms["total"]
         names = getattr(self.wm.heads, "reward_term_names", REWARD_TERM_NAMES)
         term_vec = torch.stack([terms[k] for k in names], dim=0)  # (K, n)

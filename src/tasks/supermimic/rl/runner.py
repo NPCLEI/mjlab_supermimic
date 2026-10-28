@@ -247,6 +247,14 @@ class SuperMimicRunner:
         done = term | tout
         self.ep_reward_sum += rew
         self.ep_len += 1
+        if __import__("os").environ.get("SM_DEBUG_LOOP") and self.iteration < 8:
+          print(
+            f"[dbg] it {self.iteration} rew {float(rew.mean()):+.4f} min {float(rew.min()):+.3f} "
+            f"term {int(term.sum())} tout {int(tout.sum())} done {int(done.sum())} "
+            f"ep_len {float(self.ep_len.mean()):.1f} epsum {float(self.ep_reward_sum.mean()):+.3f} "
+            f"|a| {float(a_env.abs().mean()):.2e} finite_s {bool(torch.isfinite(self._prev_s).all())}",
+            flush=True,
+          )
 
         # transition rows (state before the step -> state after it). Skipped when the
         # environment records them itself (adapter.writes_buffer == False); two writers
