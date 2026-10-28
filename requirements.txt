@@ -1,0 +1,9 @@
+# SuperMimic engine + mjlab GPU stack (versions as validated on this box)
+torch==2.12.1
+mujoco>=3.0
+mujoco-warp
+mjlab
+numpy
+tyro
+viser
+tensorboard
