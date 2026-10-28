@@ -51,6 +51,8 @@ def imagine(
     anchor_noise_half = ANCHOR_NOISE_HALF.to(device)
     ai = wm.heads.anchor_index
 
+    noise_half = getattr(wm.heads, "obs_noise_half", noise_half)
+
     def add_noise(o):
         if obs_noise:
             half = noise_half if noise_half.numel() == o.shape[-1] else torch.zeros_like(o)

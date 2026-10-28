@@ -61,6 +61,7 @@ class VelocityHeads:
   reward_term_names = ANALYTIC
   action_bound = 1.0  # the env clips joint_pos actions to [-1, 1]
 
+
   def __init__(self, env: Any, actor_dim: int, command_name: str = "twist") -> None:
     self.env = env
     self.command_name = command_name
@@ -215,6 +216,8 @@ class VelocityAdapter:
   """TaskAdapter for the stock mjlab velocity task."""
 
   n_joints: int = N_JOINTS
+  #: observation history: the actor group has none, but the policy needs one to know its own speed
+  history: int = 1
   writes_buffer: bool = True     # the stock task has no replay recorder
   auto_reset: bool = True        # mjlab resets finished episodes; termination is marked inline
 
@@ -224,6 +227,7 @@ class VelocityAdapter:
     self._lib = VelocityLib(env, command_name)
     actor_dim = int(env.observation_manager.group_obs_dim["actor"][0])
     self._heads = VelocityHeads(env, actor_dim, command_name)
+    self._hist: list[torch.Tensor] = []
 
   # ------------------------------------------------------------------ construction
   @staticmethod
@@ -260,6 +264,14 @@ class VelocityAdapter:
   def observation(self, env) -> dict[str, torch.Tensor]:
     obs = env.observation_manager.compute()
     actor = obs["actor"]
+    # frame-major history, matching what ``imagine`` builds from the sampled history states
+    self._hist.append(actor.detach())
+    if len(self._hist) > self.history:
+      self._hist.pop(0)
+    elif len(self._hist) < self.history:
+      while len(self._hist) < self.history:
+        self._hist.insert(0, self._hist[0])
+    actor = torch.cat(self._hist, dim=-1)
     # the goal is the current velocity command, repeated over the imagination horizon
     frames = int(getattr(self.env.cfg, "future_frames", 10) or 10)
     goal = self._lib.goal_window(torch.zeros(actor.shape[0], dtype=torch.long, device=actor.device), frames)
@@ -281,4 +293,4 @@ class VelocityAdapter:
     return xi
 
   def on_reset(self, env, env_ids=None) -> None:
-    return None
+    self._hist.clear()

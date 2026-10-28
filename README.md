@@ -210,3 +210,27 @@ Terms that cannot be scored in imagination are excluded by construction: `air_ti
 `foot_clearance`, `foot_slip`, `soft_landing`, `self_collisions`, `angular_momentum` (they
 need contact forces or air time). That is a property of the method -- the imagined reward must
 be a differentiable function of the predicted state.
+## Velocity-tracking parameter findings
+
+Measured on `Mjlab-Velocity-Flat-Unitree-G1` through `register_supermimic_task` (robot GPU 0,
+1024 envs unless stated). `train_ret` is the environment return normalised by the task's maximum
+step reward, so 1.0 is perfect tracking.
+
+| change | effect |
+|---|---|
+| keep the stock contact terms as a hand-written analytic reward | return collapses (the analytic reward is only 0.56-correlated with the environment's, 3.8x too large, and blind to -0.22/step contact penalties) |
+| **drop the contact terms, as the paper does** | return rises to +0.33; the environment now optimises exactly what imagination can score |
+| **clip the action** (collection and imagination) | removes the collapse entirely: -60 -> +-0.2. The decoder has no output nonlinearity and this runner bypasses the wrapper that clips |
+| **normalise the predicted quaternion** before computing gravity | removes a world-model exploit (`|q|` drift lets the policy game `upright`) |
+| **EMA collection policy** (tau 0.99) | removes the oscillation; the update has no trust region |
+| **tracking's recipe** (horizon 32, wm 1024x10, policy 2048, lr 2e-4, warmup 40) | imagined return 0.2 -> 0.89, real return 0 -> +0.25 |
+| 10-frame observation history | worse early (-0.29 at iteration 1300 vs +0.25 with one frame); the input grows to 960 dims |
+| paper sensor noise on the imagined observation | worse (-1.03 at iteration 750); removed (a task can opt in with `heads.obs_noise_half`) |
+| smaller policy (lr 5e-5, horizon 8) | no improvement |
+| replay capacity 1000 -> 4000 | no effect |
+| removing the `command_vel` curriculum | no effect |
+
+Remaining gap: the real return oscillates around +0.1..+0.3 and does not climb to the 0.6-0.8 that
+PPO reaches. The imagined return (0.9) stays far above the real one, i.e. the policy exploits the
+world model's optimism -- a model-based limitation rather than a task-integration defect. Motion
+tracking does not show it because the reference motion supplies the target behaviour in the data.

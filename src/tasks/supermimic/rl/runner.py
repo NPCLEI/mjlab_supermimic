@@ -345,7 +345,7 @@ class SuperMimicRunner:
       self.iteration += 1
 
       # ---------------- (2)+(3) updates at the configured update-to-data ratio
-      need_rows = max(cfg.wm_trainer.window, cfg.policy_trainer.history) + 2
+      need_rows = cfg.wm_trainer.window + cfg.policy_trainer.history + 2
       # depth = rows written per env (the time axis); buffer.size counts envs*rows and is
       # already large after one step, which made a freshly resumed run update immediately
       # and crash sampling a k-step window out of an empty buffer.

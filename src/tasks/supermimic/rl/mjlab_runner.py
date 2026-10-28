@@ -52,12 +52,16 @@ class SuperMimicOnPolicyRunner:
   ) -> None:
     raw = getattr(env, "unwrapped", env)
     sm_cfg = _cfg_from_dict(cfg)
-    # a task whose actor group carries no history must not get the tracking history length
-    if _actor_history(raw) == 0:
-      sm_cfg.policy.history = 1
-      sm_cfg.policy_trainer.history = 1
     if adapter is None:
       adapter = make_adapter(raw, sm_cfg)
+    # history comes from the adapter, so this must run *after* the adapter is resolved
+    adapter_hist = int(getattr(adapter, "history", 0) or 0)
+    if adapter_hist > 0:
+      sm_cfg.policy.history = adapter_hist
+      sm_cfg.policy_trainer.history = adapter_hist
+    elif _actor_history(raw) == 0:
+      sm_cfg.policy.history = 1
+      sm_cfg.policy_trainer.history = 1
     # reset ownership must match: an adapter that writes the replay rows needs the runner to
     # perform the reset itself (mjlab registers tasks with auto_reset=True by default)
     want_auto = bool(getattr(adapter, "auto_reset", True))
