@@ -418,9 +418,14 @@ class SuperMimicRunner:
         with torch.no_grad():
           err = None
           if self.buffer.size > 2048:
-            err = self.wm_trainer.online_error(self.buffer, n=1024, k=8)
-            self.writer.add_scalar("wm/online_nse_1step", float(err[0]), it)
-            self.writer.add_scalar("wm/online_nse_8step", float(err[-1]), it)
+            try:
+              err = self.wm_trainer.online_error(self.buffer, n=1024, k=8)
+            except RuntimeError:
+              # every episode is shorter than the window: the probe has nothing to sample
+              err = None
+            if err is not None:
+              self.writer.add_scalar("wm/online_nse_1step", float(err[0]), it)
+              self.writer.add_scalar("wm/online_nse_8step", float(err[-1]), it)
         for k, v in timers.items():
           self.writer.add_scalar(f"time/{k}_s_per_iter", v / sch.log_interval, it)
         self.writer.add_scalar("time/hours", elapsed / 3600, it)
