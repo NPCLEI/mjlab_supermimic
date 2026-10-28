@@ -65,7 +65,8 @@ class VelocityHeads:
   def __init__(self, env: Any, actor_dim: int, command_name: str = "twist") -> None:
     self.env = env
     self.command_name = command_name
-    self.actor_dim = int(actor_dim)
+    # the environment's actor group does not know the base velocity; the adapter appends the error
+    self.actor_dim = int(actor_dim) + self.anchor_dim
     robot = env.scene["robot"]
     self.default_joint_pos = robot.data.default_joint_pos[0].clone()
     self.soft_limits = robot.data.soft_joint_pos_limits[0].clone()
@@ -89,6 +90,18 @@ class VelocityHeads:
       return xi[..., 1:4]
     return self.env.command_manager.get_term(self.command_name).command
 
+  #: extra anchor-like features appended to the actor observation (velocity error + speed)
+  anchor_dim: int = 4
+
+  def anchor_feature(self, s_next: torch.Tensor, xi: torch.Tensor | None = None) -> torch.Tensor:
+    """How far the predicted state is from the commanded motion (tracking's anchor analogue)."""
+    _, _, _, v, w, _ = self._split(s_next)
+    cmd = self._command(xi).to(s_next.dtype)
+    err_v = cmd[..., :2] - v[..., :2]
+    err_w = (cmd[..., 2] - w[..., 2]).unsqueeze(-1)
+    speed = cmd[..., :2].norm(dim=-1, keepdim=True)
+    return torch.cat([err_v, err_w, speed], dim=-1)
+
   # ------------------------------------------------------------------ analytic observation
   def observation(self, s_next: torch.Tensor, prev_action: torch.Tensor, xi, default_joint_pos) -> torch.Tensor:
     """The velocity task's actor observation, computed from a predicted state.
@@ -97,7 +110,10 @@ class VelocityHeads:
     command(4) | joint_pos-default(29) | joint_vel(29) | actions(29).
     """
     _, q, qj, _, w, qd = self._split(s_next)
-    obs = torch.cat([w, projected_gravity(q), self._command(xi).to(s_next.dtype).expand(s_next.shape[0], -1) if xi is None else self._command(xi).to(s_next.dtype), qj - self.default_joint_pos, qd, prev_action], dim=-1)
+    obs = torch.cat([w, projected_gravity(q), (self._command().to(s_next.dtype).expand(s_next.shape[0], -1)
+                        if xi is None else self._command(xi).to(s_next.dtype)),
+                       qj - self.default_joint_pos, qd, prev_action,
+                       self.anchor_feature(s_next, xi)], dim=-1)
     if obs.shape[-1] != self.actor_dim:
       raise RuntimeError(f"analytic observation {obs.shape[-1]} != actor group {self.actor_dim}")
     return obs
@@ -264,13 +280,15 @@ class VelocityAdapter:
   def observation(self, env) -> dict[str, torch.Tensor]:
     obs = env.observation_manager.compute()
     actor = obs["actor"]
+    # tracking appends anchor-relative quantities so the policy can correct drift; the velocity
+    # analogue is the live velocity error, which the actor group does not contain
+    actor = torch.cat([actor, self._heads.anchor_feature(self.state(env), self.xi(env))], dim=-1)
     # frame-major history, matching what ``imagine`` builds from the sampled history states
     self._hist.append(actor.detach())
     if len(self._hist) > self.history:
       self._hist.pop(0)
-    elif len(self._hist) < self.history:
-      while len(self._hist) < self.history:
-        self._hist.insert(0, self._hist[0])
+    while len(self._hist) < self.history:
+      self._hist.insert(0, self._hist[0])
     actor = torch.cat(self._hist, dim=-1)
     # the goal is the current velocity command, repeated over the imagination horizon
     frames = int(getattr(self.env.cfg, "future_frames", 10) or 10)
