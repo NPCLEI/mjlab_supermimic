@@ -78,6 +78,19 @@ class SuperMimicRunner:
     cfg.policy.act_dim = act_dim
 
     # ---- algorithm --------------------------------------------------------
+    self.reward_opt = None
+    if getattr(cfg, "reward_model", False) or getattr(adapter, "reward_from_env", False):
+      from src.tasks.supermimic.adapters.learned_reward import (
+        LearnedRewardHeads, RewardModel, RewardModelCfg,
+      )
+
+      rm_cfg = getattr(cfg, "reward_model_cfg", None) or RewardModelCfg()
+      model = RewardModel(71, int(cfg.policy.act_dim or 29), 33, rm_cfg.hidden).to(device)
+      self.heads = LearnedRewardHeads(self.heads, model, target_scale=float(self.max_step_reward or 1.0))
+      self.reward_opt = torch.optim.Adam(model.parameters(), lr=rm_cfg.lr, weight_decay=rm_cfg.weight_decay)
+      self.reward_cfg_rm = rm_cfg
+      self._reward_scales_set = False
+      print("[INFO] learned reward model enabled (r̂(s,a,xi) supervises the imagined reward)", flush=True)
     self.wm = WorldModel(cfg.world_model, self.heads, device)
     self.policy = Policy(cfg.policy).to(device)
     self.critic = Critic(cfg.critic, pcfg=cfg.policy).to(device)
@@ -270,7 +283,7 @@ class SuperMimicRunner:
             done=term.float(),
             frame=self._prev_frame,
             clip=self._prev_clip,
-            terminal=torch.zeros_like(done),
+            terminal=(done.clone() if (self._auto_reset and self._writes_buffer) else torch.zeros_like(done)),
             ep_start=self._ep_start,
           )
         self._ep_start[:] = False
@@ -283,7 +296,7 @@ class SuperMimicRunner:
           finished_lens.extend(lens.tolist())
           self.ep_reward_sum[ids] = 0.0
           self.ep_len[ids] = 0.0
-          if self._writes_buffer:
+          if self._writes_buffer and not self._auto_reset:
             # terminal row: the state the last action reached (no transition out of it)
             s_next = self._state()
             zeros_a = torch.zeros(ids.numel(), a_env.shape[-1], device=self.device)
@@ -353,6 +366,13 @@ class SuperMimicRunner:
           start_pi = int(getattr(cfg, "policy_start_updates", 0) or 0)
           if self.num_updates >= start_pi:
             for _ in range(sch.policy_updates_per_wm_update):
+              if self.reward_opt is not None:
+                if not self._reward_scales_set:
+                  w0 = self.buffer.sample_windows(256, 1)
+                  self.heads.model.set_scales_from(w0.states[0], w0.a_exec[0], w0.xi)
+                  self._reward_scales_set = True
+                for _ in range(self.reward_cfg_rm.updates_per_iteration):
+                  m_r = self.heads.update(self.buffer, self.reward_cfg_rm, self.reward_opt)
               m_pi = self.policy_trainer.update(self.buffer)
           else:
             m_pi = {}
@@ -390,6 +410,8 @@ class SuperMimicRunner:
         print(
           f"it {it} | {elapsed / 3600:.2f} h | {sch.log_interval / dt_log:.1f} it/s | "
           f"updates {self.num_updates} | train_ret {tr:.3f} (n={len(finished_returns)}) | "
+          + (f"rm mse {m_r['reward_mse']:.3f} mae {m_r['reward_mae']:.4f} corr {m_r['reward_corr']:+.2f} | "
+             if self.reward_opt is not None and "m_r" in dir() else "") +
           f"wm nse1 {agg.get('wm/nse_1step', float('nan')) / max(agg_n, 1):.4f} "
           f"nse8 {(float(err[-1]) if err is not None else float('nan')):.4f} | "
           f"imag_ret {agg.get('policy/imag_return_undisc', float('nan')) / max(agg_n, 1):.3f} "

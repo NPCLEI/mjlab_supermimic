@@ -29,9 +29,12 @@ NON_ANALYTIC = (
   "air_time", "foot_clearance", "foot_slip", "soft_landing", "self_collisions", "angular_momentum",
 )
 ANALYTIC = (
-  "track_linear_velocity", "track_angular_velocity", "upright", "pose",
+  "track_linear_velocity", "track_angular_velocity", "upright",
   "body_ang_vel", "dof_pos_limits", "action_rate_l2",
 )
+#: "pose" is deliberately absent: mjlab compares against a commanded reference pose, so the
+#: default-stance proxy would reward standing still and fight the velocity objective.
+POSE_IS_PROXY = True
 TILT_LIMIT = 1.2217304763960306  # mjlab's fell_over limit (70 deg)
 N_JOINTS = 29
 
@@ -94,10 +97,22 @@ class VelocityHeads:
       raise RuntimeError(f"analytic observation {obs.shape[-1]} != actor group {self.actor_dim}")
     return obs
 
+  def goal(self, start, ref, anchor_pose, future_frames: int) -> torch.Tensor:
+    """The imagined batch's goal: each sampled row's own velocity command, repeated."""
+    cmd = start.xi[..., 1:4]
+    return cmd.repeat(1, int(future_frames))
+
   # ------------------------------------------------------------------ heads API
   @staticmethod
   def termination_features(root_pos: torch.Tensor, root_quat: torch.Tensor, ref=None) -> torch.Tensor:
-    return torch.stack([torch.zeros_like(_tilt(root_quat)), _tilt(root_quat)], dim=-1)
+    """Smooth tilt proxy ``1 + g_z`` (0 upright, 2 upside down).
+
+    ``acos`` must not appear here: at ``-g_z == 1`` its derivative is infinite, which turns the
+    world-model gradients into NaN even though the loss itself is finite.
+    """
+    g = projected_gravity(root_quat)
+    tilt_proxy = 1.0 + g[..., 2].clamp(-1.0, 1.0)
+    return torch.stack([torch.zeros_like(tilt_proxy), tilt_proxy], dim=-1)
 
   def terminated(self, s: torch.Tensor, ref=None, height_thr: float | None = None, tilt_thr: float | None = None):
     _, q, *_ = self._split(s)
@@ -129,8 +144,6 @@ class VelocityHeads:
       -((w[..., 2] - cmd[..., 2]) ** 2) / self.stds["track_angular_velocity"] ** 2)
     terms["upright"] = dt * self.weights["upright"] * torch.exp(
       -(g[..., :2] ** 2).sum(-1) / self.stds["upright"] ** 2)
-    terms["pose"] = dt * self.weights["pose"] * torch.exp(
-      -((qj - self.default_joint_pos) ** 2).sum(-1) / self.stds["pose"] ** 2)
     terms["body_ang_vel"] = dt * self.weights["body_ang_vel"] * (w ** 2).sum(-1)
     lo, hi = self.soft_limits[..., 0], self.soft_limits[..., 1]
     terms["dof_pos_limits"] = dt * self.weights["dof_pos_limits"] * (
@@ -197,7 +210,7 @@ class VelocityAdapter:
 
   n_joints: int = N_JOINTS
   writes_buffer: bool = True     # the stock task has no replay recorder
-  auto_reset: bool = False       # the runner writes the terminal row itself, so it must reset
+  auto_reset: bool = True        # mjlab resets finished episodes; termination is marked inline
 
   def __init__(self, env: Any, command_name: str = "twist") -> None:
     self.env = env
@@ -215,9 +228,6 @@ class VelocityAdapter:
     env_cfg = load_env_cfg(task_id or cfg.task_id, play=False)
     env_cfg.scene.num_envs = int(cfg.env.num_envs)
     env_cfg.seed = int(cfg.seed)
-    # the runner writes the replay rows (and the terminal row from the pre-reset state),
-    # so the environment must NOT reset finished episodes itself
-    env_cfg.auto_reset = False
     return ManagerBasedRlEnv(env_cfg, device=cfg.device, render_mode=None)
 
   # ------------------------------------------------------------------ task surface

@@ -58,6 +58,12 @@ class SuperMimicOnPolicyRunner:
       sm_cfg.policy_trainer.history = 1
     if adapter is None:
       adapter = make_adapter(raw, sm_cfg)
+    # reset ownership must match: an adapter that writes the replay rows needs the runner to
+    # perform the reset itself (mjlab registers tasks with auto_reset=True by default)
+    want_auto = bool(getattr(adapter, "auto_reset", True))
+    if getattr(raw, "cfg", None) is not None and bool(getattr(raw.cfg, "auto_reset", True)) != want_auto:
+      raw.cfg.auto_reset = want_auto
+      print(f"[INFO] env auto_reset -> {want_auto} (matching {type(adapter).__name__})", flush=True)
     print(
       f"[INFO] SuperMimicOnPolicyRunner | adapter {type(adapter).__name__} | device {device} | log {log_dir}",
       flush=True,

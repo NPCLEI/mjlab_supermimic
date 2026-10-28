@@ -94,13 +94,24 @@ def imagine(
         anchor_pose = torch.cat([b0["pos"][..., ai, :], b0["quat"][..., ai, :]], dim=-1)
     else:
         anchor_pose = None
-    goals = [make_goal(frame, ref, anchor_pose)]
+    goal_fn = getattr(wm.heads, "goal", None)
+    goals = [goal_fn(start, ref, anchor_pose, future_frames) if goal_fn is not None else make_goal(frame, ref, anchor_pose)]
+    if __import__("os").environ.get("SM_TRACE"):
+        print(
+            f"[trace] start.xi {tuple(start.xi.shape)} start.frame {tuple(start.frame.shape)} "
+            f"hist_states {tuple(start.hist_states.shape)} | goal {tuple(goals[-1].shape)} | "
+            f"obs_flat would be {tuple(hist[0].shape)} | anchor {anchor_pose is not None}",
+            flush=True,
+        )
     e_roots = [wm.heads.root_error_features(s, ref)]
     n_terms = len(getattr(wm.heads, "reward_term_names", REWARD_TERM_NAMES))
     term_sum = torch.zeros(n_terms, device=device)
 
     for t in range(horizon):
         obs_flat = flatten_history_term_major(torch.stack(hist, 0))
+        if __import__("os").environ.get("SM_TRACE") and t < 2:
+            print(f"[trace] policy call t={t} obs_flat {tuple(obs_flat.shape)} goal {tuple(goals[-1].shape)} "
+                  f"cells={len(hist)}", flush=True)
         a = policy(obs_flat, goals[-1])
         s_next, r, term_vec, logits, obs_clean, anchor_pose = step_fn(s, a, a_prev, start.xi, ref)
         d = torch.sigmoid(logits)
@@ -117,7 +128,7 @@ def imagine(
         rewards.append(r)
         dhats.append(d)
         survivals.append(c)
-        goals.append(make_goal(frame, ref, anchor_pose))
+        goals.append(goal_fn(start, ref, anchor_pose, future_frames) if goal_fn is not None else make_goal(frame, ref, anchor_pose))
         e_roots.append(wm.heads.root_error_features(s, ref))
         frames.append(frame)
 
@@ -130,5 +141,5 @@ def imagine(
         goals=torch.stack(goals),
         e_root=torch.stack(e_roots),
         frames=torch.stack(frames),
-        reward_terms={k: float(v / horizon) for k, v in zip(REWARD_TERM_NAMES, term_sum.tolist())},
+        reward_terms={k: float(v / horizon) for k, v in zip(getattr(wm.heads, "reward_term_names", REWARD_TERM_NAMES), term_sum.tolist())},
     )

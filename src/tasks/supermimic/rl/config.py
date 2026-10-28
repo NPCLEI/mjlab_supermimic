@@ -36,6 +36,9 @@ class SuperMimicCfg(TrainConfig):
   experiment_name: str = ""
   wandb_tags: list[str] = field(default_factory=list)
   logger: str = "tensorboard"
+  #: learn r(s, a, xi) from the replay buffer instead of hand-written analytic terms
+  #: (mandatory for tasks whose reward needs contact forces)
+  reward_model: bool = False
   #: mjlab task id used by the "velocity" adapter
   task_id: str = "Mjlab-Velocity-Flat-Unitree-G1"
   #: override the policy/critic observation size (normally inferred from the adapter)
