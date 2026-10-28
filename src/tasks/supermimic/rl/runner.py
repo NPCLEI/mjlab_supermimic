@@ -245,7 +245,8 @@ class SuperMimicRunner:
       # ---------------- (1) collect one vectorised env step
       t0 = time.perf_counter()
       with torch.no_grad():
-        a_pol = self.policy(obs["policy"], obs["goal"])
+        collector = self.policy_collect if getattr(self, "ema_tau", 0.0) > 0.0 else self.policy
+        a_pol = collector(obs["policy"], obs["goal"])
         if getattr(cfg, "clip_actions", True):
           # the decoder has no output nonlinearity and this runner bypasses the env wrapper
           # that normally clips; unclipped actions (|a| up to 62 observed) throw the robot down
@@ -389,6 +390,10 @@ class SuperMimicRunner:
           if self.num_updates >= start_pi:
             for _ in range(sch.policy_updates_per_wm_update):
               m_pi = self.policy_trainer.update(self.buffer)
+              if getattr(self, "ema_tau", 0.0) > 0.0:
+                with torch.no_grad():
+                  for _pe, _p in zip(self.policy_collect.parameters(), self.policy.parameters()):
+                    _pe.mul_(self.ema_tau).add_(_p, alpha=1.0 - self.ema_tau)
           else:
             m_pi = {}
           timers["policy"] += time.perf_counter() - t0

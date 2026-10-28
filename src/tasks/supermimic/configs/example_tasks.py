@@ -55,7 +55,7 @@ register_supermimic_task(
   play_env_cfg=_velocity_env_cfg(play=True),
   rl_cfg=supermimic_runner_cfg(
     adapter="auto",
-    env=EnvCfg(replay_capacity=4000),
+    env=EnvCfg(replay_capacity=2000),
     # sized for a 22 GB card shared with other jobs
     world_model=WorldModelCfg(
       state_spec=StateSpecCfg(
@@ -65,9 +65,9 @@ register_supermimic_task(
         in_scale=(1.0, 1.0, 1.0, 2.0, 10.0, 30.0),
       ),
     ),
-    wm_trainer=WMTrainerCfg(batch_size=512, batches_per_update=8),
-    policy_trainer=PolicyTrainerCfg(batch_size=1024, lr=5e-5, horizon=8),
-    schedule=ScheduleCfg(warmup_iterations=200, total_iterations=200000),
-    policy_start_updates=200,
+    wm_trainer=WMTrainerCfg(batch_size=1024, batches_per_update=8),
+    policy_trainer=PolicyTrainerCfg(batch_size=2048, lr=1e-4, horizon=4, grad_clip_value=0.05),
+    schedule=ScheduleCfg(warmup_iterations=40, total_iterations=200000),
+    policy_start_updates=0,
   ),
 )

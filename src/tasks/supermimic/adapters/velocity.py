@@ -42,6 +42,9 @@ N_JOINTS = 29
 def projected_gravity(q: torch.Tensor) -> torch.Tensor:
   from mjlab.utils.lab_api.math import quat_apply_inverse
 
+  # the world model predicts the quaternion as four free numbers: |q| drifts in imagination and an
+  # unnormalised quaternion lets the policy game `upright` / the tilt termination
+  q = q / q.norm(dim=-1, keepdim=True).clamp_min(1e-6)
   g = torch.tensor([0.0, 0.0, -1.0], dtype=q.dtype, device=q.device).expand(*q.shape[:-1], 3)
   return quat_apply_inverse(q, g)
 
@@ -56,6 +59,7 @@ class VelocityHeads:
 
   anchor_index = 0
   reward_term_names = ANALYTIC
+  action_bound = 1.0  # the env clips joint_pos actions to [-1, 1]
 
   def __init__(self, env: Any, actor_dim: int, command_name: str = "twist") -> None:
     self.env = env
@@ -146,8 +150,10 @@ class VelocityHeads:
       -(g[..., :2] ** 2).sum(-1) / self.stds["upright"] ** 2)
     terms["body_ang_vel"] = dt * self.weights["body_ang_vel"] * (w ** 2).sum(-1)
     lo, hi = self.soft_limits[..., 0], self.soft_limits[..., 1]
-    terms["dof_pos_limits"] = dt * self.weights["dof_pos_limits"] * (
-      (lo - qj).clamp_min(0.0) + (qj - hi).clamp_min(0.0)).sum(-1)
+    # the predicted joint angle is unbounded; cap the violation so one bad prediction cannot
+    # dominate the whole imagined return
+    violation = ((lo - qj).clamp_min(0.0) + (qj - hi).clamp_min(0.0)).clamp_max(1.0)
+    terms["dof_pos_limits"] = dt * self.weights["dof_pos_limits"] * violation.sum(-1)
     terms["action_rate_l2"] = dt * self.weights["action_rate_l2"] * ((action - prev_action) ** 2).sum(-1)
     total = terms["track_linear_velocity"]
     for k, val in terms.items():

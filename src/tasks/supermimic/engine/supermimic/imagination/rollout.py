@@ -113,6 +113,10 @@ def imagine(
             print(f"[trace] policy call t={t} obs_flat {tuple(obs_flat.shape)} goal {tuple(goals[-1].shape)} "
                   f"cells={len(hist)}", flush=True)
         a = policy(obs_flat, goals[-1])
+        bound = getattr(wm.heads, "action_bound", None)
+        if bound is not None:
+            # the robot receives clipped actions; the world model must be queried with the same
+            a = a.clamp(-float(bound), float(bound))
         s_next, r, term_vec, logits, obs_clean, anchor_pose = step_fn(s, a, a_prev, start.xi, ref)
         d = torch.sigmoid(logits)
         c = c * (1.0 - d)

@@ -52,6 +52,8 @@ STD_FIELDS = {
 class EnvSyncedHeads(AnalyticHeads):
   """``AnalyticHeads`` whose reward weights / stds / thresholds come from ``env.cfg``."""
 
+  action_bound = 1.0  # the env clips joint_pos actions to [-1, 1]
+
   def __init__(self, env: Any, *args, **kwargs) -> None:
     base = kwargs.pop("reward_cfg", None) or TrackingRewardCfg()
     synced = self._sync_cfg(env, base)
