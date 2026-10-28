@@ -246,6 +246,10 @@ class SuperMimicRunner:
       t0 = time.perf_counter()
       with torch.no_grad():
         a_pol = self.policy(obs["policy"], obs["goal"])
+        if getattr(cfg, "clip_actions", True):
+          # the decoder has no output nonlinearity and this runner bypasses the env wrapper
+          # that normally clips; unclipped actions (|a| up to 62 observed) throw the robot down
+          a_pol = a_pol.clamp(-1.0, 1.0)
         a_env = self._env_action(a_pol)
         # The environment normally applies its own action noise (the reference env does:
         # env.action_noise_std). Adding it here too doubles the effective noise (x1.41) and
@@ -260,13 +264,18 @@ class SuperMimicRunner:
         obs = self._observation()
         done = term | tout
         self.ep_reward_sum += rew
+        a_prev = getattr(self, "_a_prev", a_env)
+        self._a_prev = a_env.detach()
         self.ep_len += 1
-        if __import__("os").environ.get("SM_DEBUG_LOOP") and self.iteration < 8:
+        if __import__("os").environ.get("SM_DEBUG_LOOP") and (
+          self.iteration < 6 or self.iteration % 25 == 0 or float(rew.mean()) < -0.5
+        ):
           print(
             f"[dbg] it {self.iteration} rew {float(rew.mean()):+.4f} min {float(rew.min()):+.3f} "
             f"term {int(term.sum())} tout {int(tout.sum())} done {int(done.sum())} "
             f"ep_len {float(self.ep_len.mean()):.1f} epsum {float(self.ep_reward_sum.mean()):+.3f} "
-            f"|a| {float(a_env.abs().mean()):.2e} finite_s {bool(torch.isfinite(self._prev_s).all())}",
+            f"|a| {float(a_env.abs().mean()):.4f} max {float(a_env.abs().max()):.4f} "
+            f"|da|2 {float((a_env - a_prev).pow(2).sum(-1).mean()):.4f} finite {bool(torch.isfinite(self._prev_s).all())}",
             flush=True,
           )
 
