@@ -78,6 +78,7 @@ class SuperMimicRunner:
     cfg.policy.act_dim = act_dim
 
     # ---- algorithm --------------------------------------------------------
+    self.max_step_reward = float(self.heads.reward_cfg.max_step_reward)
     self.reward_opt = None
     if getattr(cfg, "reward_model", False) or getattr(adapter, "reward_from_env", False):
       from src.tasks.supermimic.adapters.learned_reward import (
@@ -340,6 +341,18 @@ class SuperMimicRunner:
       # and crash sampling a k-step window out of an empty buffer.
       depth = int(self.buffer.ptr.min()) if hasattr(self.buffer, "ptr") else int(self.buffer.size)
       self._windows_ok = True
+      # The reward model trains from the very first rows: it has to be usable *before* the
+      # policy starts consuming it, otherwise the policy fits pure noise.
+      if self.reward_opt is not None and depth >= 2:
+        try:
+          if not self._reward_scales_set:
+            w0 = self.buffer.sample_windows(min(256, depth), 1)
+            self.heads.model.set_scales_from(w0.states[0], w0.a_exec[0], w0.xi)
+            self._reward_scales_set = True
+          for _ in range(self.reward_cfg_rm.updates_per_iteration):
+            m_r = self.heads.update(self.buffer, self.reward_cfg_rm, self.reward_opt)
+        except RuntimeError:
+          m_r = {}
       if self.iteration >= sch.warmup_iterations and depth >= need_rows:
         self._utd_acc += sch.updates_per_env_step
         while self._utd_acc >= 1.0:
@@ -366,13 +379,6 @@ class SuperMimicRunner:
           start_pi = int(getattr(cfg, "policy_start_updates", 0) or 0)
           if self.num_updates >= start_pi:
             for _ in range(sch.policy_updates_per_wm_update):
-              if self.reward_opt is not None:
-                if not self._reward_scales_set:
-                  w0 = self.buffer.sample_windows(256, 1)
-                  self.heads.model.set_scales_from(w0.states[0], w0.a_exec[0], w0.xi)
-                  self._reward_scales_set = True
-                for _ in range(self.reward_cfg_rm.updates_per_iteration):
-                  m_r = self.heads.update(self.buffer, self.reward_cfg_rm, self.reward_opt)
               m_pi = self.policy_trainer.update(self.buffer)
           else:
             m_pi = {}

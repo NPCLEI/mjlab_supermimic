@@ -24,11 +24,25 @@ from mjlab.tasks.velocity.config.g1.env_cfgs import unitree_g1_flat_env_cfg
 
 from src.tasks.supermimic.registry import register_supermimic_task, supermimic_runner_cfg
 from supermimic.world_model.state_spec import StateSpecCfg
-from src.tasks.supermimic.rl.config import PolicyTrainerCfg, ScheduleCfg, WMTrainerCfg, WorldModelCfg
+from src.tasks.supermimic.rl.config import EnvCfg, PolicyTrainerCfg, ScheduleCfg, WMTrainerCfg, WorldModelCfg
+
+
+#: reward terms that need contact forces or full dynamics -> not scorable in imagination
+CONTACT_TERMS = (
+  "air_time", "foot_clearance", "foot_swing_height", "foot_slip", "soft_landing",
+  "self_collisions", "angular_momentum", "pose",
+)
 
 
 def _velocity_env_cfg(play: bool = False):
   cfg = unitree_g1_flat_env_cfg()
+  for name in CONTACT_TERMS:
+    if name in cfg.rewards:
+      cfg.rewards[name].weight = 0.0
+  # freeze the command ranges: the curriculum raises them as the tracking reward improves, which
+  # is indistinguishable from a policy collapse when the algorithm is being validated
+  if "command_vel" in getattr(cfg, "curriculum", {}):
+    del cfg.curriculum["command_vel"]
   if play:
     cfg.scene.num_envs = 1
   return cfg
@@ -41,7 +55,7 @@ register_supermimic_task(
   play_env_cfg=_velocity_env_cfg(play=True),
   rl_cfg=supermimic_runner_cfg(
     adapter="auto",
-    reward_model=True,
+    env=EnvCfg(replay_capacity=4000),
     # sized for a 22 GB card shared with other jobs
     world_model=WorldModelCfg(
       state_spec=StateSpecCfg(
@@ -51,8 +65,8 @@ register_supermimic_task(
         in_scale=(1.0, 1.0, 1.0, 2.0, 10.0, 30.0),
       ),
     ),
-    wm_trainer=WMTrainerCfg(batch_size=512, batches_per_update=4),
-    policy_trainer=PolicyTrainerCfg(batch_size=1024, lr=1e-4, horizon=16),
+    wm_trainer=WMTrainerCfg(batch_size=512, batches_per_update=8),
+    policy_trainer=PolicyTrainerCfg(batch_size=1024, lr=5e-5, horizon=8),
     schedule=ScheduleCfg(warmup_iterations=200, total_iterations=200000),
     policy_start_updates=200,
   ),

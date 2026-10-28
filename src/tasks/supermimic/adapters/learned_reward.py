@@ -31,6 +31,10 @@ class RewardModelCfg:
   updates_per_iteration: int = 1
   #: normalise the target by this (the runner sets it to the task's max step reward)
   target_scale: float = 1.0
+  #: predict standardised targets (mean/std tracked from the buffer) -- keeps the net well scaled
+  normalize: bool = True
+  #: clamp the imagined reward to mean +- this many standard deviations
+  clip_sigma: float = 5.0
   weight_decay: float = 0.0
 
 
@@ -74,6 +78,10 @@ class LearnedRewardHeads:
     self.base = base
     self.model = model
     self.target_scale = float(target_scale)
+    self.r_mean = 0.0
+    self.r_std = 1.0
+    self.clip_sigma = 5.0
+    self.normalize = True
     # diagnostic term layout changes: the only imagined reward term is the learned one
     self.reward_term_names = ("learned_reward",)
 
@@ -92,19 +100,38 @@ class LearnedRewardHeads:
   # ------------------------------------------------------------------ the reward itself
   def reward(self, s_next, action, prev_action, ref, bodies=None, xi=None):
     r = self.model(s_next, action, xi)
+    if self.normalize:
+      r = r * self.r_std + self.r_mean
+      if self.clip_sigma > 0:
+        lo = self.r_mean - self.clip_sigma * self.r_std
+        hi = self.r_mean + self.clip_sigma * self.r_std
+        r = r.clamp(lo, hi)
     return {"learned_reward": r, "total": r}
 
   def update(self, buffer, cfg: RewardModelCfg, optim: torch.optim.Optimizer) -> dict[str, float]:
     """Fit the model to the replay buffer's real rewards (MSE on normalised targets)."""
+    self.normalize = bool(cfg.normalize)
+    self.clip_sigma = float(cfg.clip_sigma)
     w = buffer.sample_windows(cfg.batch_size, 1)
     s, a, xi, target = w.states[0], w.a_exec[0], w.xi, w.reward[0]
-    loss = nn.functional.mse_loss(self.model(s, a, xi), target / self.target_scale)
+    if cfg.normalize:
+      # exponential moving statistics keep the regression well conditioned
+      batch_mean = float(target.mean())
+      batch_std = float(target.std().clamp_min(1e-6))
+      self.r_mean = 0.9 * self.r_mean + 0.1 * batch_mean if self.r_std != 1.0 else batch_mean
+      self.r_std = 0.9 * self.r_std + 0.1 * batch_std if self.r_std != 1.0 else batch_std
+      self.r_std = max(self.r_std, 1e-6)
+      y = (target - self.r_mean) / self.r_std
+    else:
+      y = target / self.target_scale
+    loss = nn.functional.mse_loss(self.model(s, a, xi), y)
     optim.zero_grad(set_to_none=True)
     loss.backward()
     nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
     optim.step()
     with torch.no_grad():
-      pred = self.model(s, a, xi) * self.target_scale
+      pred = self.model(s, a, xi)
+      pred = pred * self.r_std + self.r_mean if cfg.normalize else pred * self.target_scale
       err = (pred - target).abs()
       corr = torch.corrcoef(torch.stack([pred, target]))[0, 1] if target.std() > 0 else torch.tensor(float("nan"))
     return {
