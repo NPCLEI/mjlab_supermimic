@@ -40,9 +40,11 @@ class ImagStep:
         bodies = self.wm.heads.robot_bodies(s_next)
         terms = self.wm.heads.reward(s_next, a, a_prev, ref, bodies)
         r = terms["total"]
-        term_vec = torch.stack([terms[k] for k in REWARD_TERM_NAMES], dim=0)  # (8, n)
+        names = getattr(self.wm.heads, "reward_term_names", REWARD_TERM_NAMES)
+        term_vec = torch.stack([terms[k] for k in names], dim=0)  # (K, n)
         logits = self.wm.termination_logits(s_next, ref)
-        obs_clean = analytic_observation(s_next, a, xi, self.q0)
+        obs_fn = getattr(self.wm.heads, "observation", None)
+        obs_clean = obs_fn(s_next, a, xi, self.q0) if obs_fn is not None else analytic_observation(s_next, a, xi, self.q0)
         ai = self.wm.heads.anchor_index
         anchor_pose = torch.cat([bodies["pos"][..., ai, :], bodies["quat"][..., ai, :]], dim=-1)  # (n, 7)
         return s_next, r, term_vec, logits, obs_clean, anchor_pose

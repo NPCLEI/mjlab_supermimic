@@ -30,14 +30,23 @@ def main(cfg: SuperMimicCfg) -> None:
     torch.backends.cudnn.allow_tf32 = True
     print("[INFO] TF32 enabled (matmul + cudnn)", flush=True)
 
-  cfg.policy.goal_dim = cfg.env.future_frames * 68 + (9 if cfg.env.anchor_obs else 0)
-  cfg.policy_trainer.anchor_obs = cfg.env.anchor_obs
-
+  if cfg.adapter == "tracking":
+    cfg.policy.goal_dim = cfg.env.future_frames * 68 + (9 if cfg.env.anchor_obs else 0)
+    cfg.policy_trainer.anchor_obs = cfg.env.anchor_obs
   if cfg.adapter == "tracking":
     from src.tasks.supermimic.adapters.tracking import MotionTrackingAdapter
 
     env = MotionTrackingAdapter.build_env(cfg)
     adapter = MotionTrackingAdapter(env)
+  elif cfg.adapter == "velocity":
+    from src.tasks.supermimic.adapters.velocity import VelocityAdapter
+
+    # the stock velocity task has no observation history and no reference motion
+    cfg.policy.history = 1
+    cfg.policy_trainer.history = 1
+    env = VelocityAdapter.build_env(cfg)
+    adapter = VelocityAdapter(env)
+    print(f"[INFO] velocity adapter on {cfg.task_id} | actor dim {adapter._heads.actor_dim}", flush=True)
   elif cfg.adapter == "mjlab":
     raise SystemExit(
       "the 'mjlab' adapter needs a task id: build the env yourself and pass it to\n"

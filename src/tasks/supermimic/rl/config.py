@@ -30,6 +30,8 @@ class SuperMimicCfg(TrainConfig):
 
   #: which adapter to build when using ``scripts/train_supermimic.py``
   adapter: str = "tracking"
+  #: mjlab task id used by the "velocity" adapter
+  task_id: str = "Mjlab-Velocity-Flat-Unitree-G1"
   #: override the policy/critic observation size (normally inferred from the adapter)
   obs_dim: int | None = None
   #: override the goal size (normally inferred from the adapter)

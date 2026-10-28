@@ -240,7 +240,10 @@ class SuperMimicRunner:
         noise = float(getattr(cfg.env, "action_noise_std", 0.0)) if self._adds_action_noise else 0.0
         if noise > 0.0:
           a_env = a_env + noise * torch.randn_like(a_env)
-        obs, rew, term, tout, _ = env.step(a_env)
+        _obs_raw, rew, term, tout, _ = env.step(a_env)
+        # observations always come from the adapter (the env's groups may be named
+        # differently, e.g. 'actor'/'critic' for the velocity task)
+        obs = self._observation()
         done = term | tout
         self.ep_reward_sum += rew
         self.ep_len += 1

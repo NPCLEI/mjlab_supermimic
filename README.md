@@ -167,3 +167,46 @@ python scripts/train.py Mjlab-Velocity-Flat-Unitree-G1 \
 SuperMimic (world-model-based motion tracking from imagination). The vendored engine under
 `src/tasks/supermimic/engine/` is the reference reproduction of that method; the adapter
 layer, runner and tooling in this repository are the packaging on top of it.
+
+## Running a non-tracking task (velocity tracking)
+
+The framework needs four things from a task: a 71-dim state, a goal vector, an **analytic**
+reward and an **analytic** termination on predicted states -- plus the analytic observation
+the policy consumes. `src/tasks/supermimic/adapters/velocity.py` implements them for the
+stock `Mjlab-Velocity-Flat-Unitree-G1` task:
+
+```bash
+python scripts/train_tracking.py --adapter velocity \
+  --task-id Mjlab-Velocity-Flat-Unitree-G1 --env.num-envs 512 \
+  --policy-trainer.batch-size 512 --wm-trainer.batch-size 256 \
+  --schedule.max-hours 1
+```
+
+Getting there required removing six motion-tracking assumptions from the engine (all fixed
+in `engine/supermimic`):
+
+| location | assumption | now |
+|---|---|---|
+| `imagination/compiled.py` | fixed tuple of the 8 tracking reward names | `heads.reward_term_names` |
+| `imagination/compiled.py` | `analytic_observation` (93-dim tracking layout) | `heads.observation(...)`, tracking fallback |
+| `imagination/rollout.py` | history frames built with `analytic_observation` | same hook |
+| `imagination/rollout.py` | observation noise fixed at 93 dims | skipped when the width differs |
+| `imagination/rollout.py` | diagnostic term accumulator fixed at 8 | task term count |
+| `world_model/heads.py`, `policy/nets.py` | history flattening assumes 5x93; policy input fixed at 930 | single-frame identity; `PolicyCfg.obs_dim` |
+
+Also fixed: the runner reads observations through the adapter (the velocity task's groups are
+`actor`/`critic`, not `policy`/`goal`).
+
+**Status: the task runs end to end, the analytic heads are numerically consistent with the
+environment (reward 0.086/step, no terminations at reset, observation width 96 = the env's
+`actor` group), and the world model fits the sampled windows (nse1 0.0105 when the windows
+are taken directly from the buffer). The training loop itself is NOT yet correct for a stock
+mjlab task: it reports a return of -1.18 per step where a direct `env.step` measurement gives
++0.077, episodes end after ~4 steps, and consequently the world-model loss is NaN. The
+suspected cause is the runner's step bookkeeping for environments whose reset ownership
+differs from the tracking task's recorder (`auto_reset`, `ep_start`, terminal rows).**
+
+Terms that cannot be scored in imagination are excluded by construction: `air_time`,
+`foot_clearance`, `foot_slip`, `soft_landing`, `self_collisions`, `angular_momentum` (they
+need contact forces or air time). That is a property of the method -- the imagined reward must
+be a differentiable function of the predicted state.

@@ -53,7 +53,8 @@ def imagine(
 
     def add_noise(o):
         if obs_noise:
-            return o + (torch.rand_like(o) * 2 - 1) * noise_half
+            half = noise_half if noise_half.numel() == o.shape[-1] else torch.zeros_like(o)
+            return o + (torch.rand_like(o) * 2 - 1) * half
         return o
 
     def make_goal(frame_t, ref_t, anchor_pose):
@@ -66,7 +67,9 @@ def imagine(
         return torch.cat([g, rel], dim=-1)
 
     # Initial observation history from the logged states/actions (noise re-sampled per frame).
-    hist = [add_noise(analytic_observation(start.hist_states[i], start.hist_actions[i], start.xi, q0)) for i in range(start.hist_states.shape[0])]
+    obs_fn = getattr(wm.heads, "observation", None)
+    heads_observation = obs_fn or (lambda st, ac, xi, q: analytic_observation(st, ac, xi, q))
+    hist = [add_noise(heads_observation(start.hist_states[i], start.hist_actions[i], start.xi, q0)) for i in range(start.hist_states.shape[0])]
     s = start.state
     frame = start.frame.clone()
     a_prev = start.prev_action
@@ -93,7 +96,8 @@ def imagine(
         anchor_pose = None
     goals = [make_goal(frame, ref, anchor_pose)]
     e_roots = [wm.heads.root_error_features(s, ref)]
-    term_sum = torch.zeros(len(REWARD_TERM_NAMES), device=device)
+    n_terms = len(getattr(wm.heads, "reward_term_names", REWARD_TERM_NAMES))
+    term_sum = torch.zeros(n_terms, device=device)
 
     for t in range(horizon):
         obs_flat = flatten_history_term_major(torch.stack(hist, 0))

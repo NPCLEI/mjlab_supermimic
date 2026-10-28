@@ -27,6 +27,7 @@ class PolicyCfg:
     goal_term_scale: tuple[float, ...] = (1.0, 5.0, 1.0, 2.0, 1.0, 1.0)
     decoder_last_gain: float = 0.01
     goal_dim: int = GOAL_DIM  # 680 (+9 with anchor_obs)
+    obs_dim: int = 930  # actor observation width (10 x 93 for tracking)
 
 
 @dataclass
@@ -35,6 +36,10 @@ class CriticCfg:
 
 
 def _obs_scale_vector(cfg: PolicyCfg) -> torch.Tensor:
+    tracking_dim = cfg.history * sum(d for _, d in OBS_TERMS)
+    if cfg.obs_dim != tracking_dim:
+        # task-defined observation layout: no per-term scaling to apply
+        return torch.ones(cfg.obs_dim)
     parts = []
     for (name, d), s in zip(OBS_TERMS, cfg.obs_term_scale):
         parts.append(torch.full((cfg.history * d,), 1.0 / s))
@@ -60,8 +65,9 @@ class MotionEncoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, cfg: PolicyCfg, obs_dim: int = 930):
+    def __init__(self, cfg: PolicyCfg, obs_dim: int | None = None):
         super().__init__()
+        obs_dim = cfg.obs_dim if obs_dim is None else obs_dim
         self.mlp = MLP(cfg.latent_dim + obs_dim, cfg.decoder_hidden, ACT_DIM, last_gain=cfg.decoder_last_gain)
         self.register_buffer("scale", _obs_scale_vector(cfg))
 
@@ -76,7 +82,7 @@ class Policy(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.encoders = nn.ModuleDict({"motion": MotionEncoder(cfg)})
-        self.decoder = Decoder(cfg)
+        self.decoder = Decoder(cfg, cfg.obs_dim)
 
     def forward(self, obs_hist: torch.Tensor, goal: torch.Tensor, interface: str = "motion") -> torch.Tensor:
         return self.decoder(self.encoders[interface](goal), obs_hist)
