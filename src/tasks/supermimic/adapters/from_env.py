@@ -168,6 +168,14 @@ class WmSpec:
     self.writes_buffer = not has_replay_recorder
     self._adds_action_noise = False
 
+  def learned_columns(self, env=None) -> tuple[int, ...]:
+    """Column indices of the learned terms inside ``env.reward_manager._step_reward``."""
+    if self.learned is None or len(self.learned.names) == 0:
+      return ()
+    env = env or self.env
+    names = list(getattr(env.reward_manager, "active_terms", []))
+    return tuple(names.index(n) for n in self.learned.names if n in names)
+
   # ------------------------------------------------------------------ state / context
   def state(self, env) -> torch.Tensor:
     return self.provider.state(env)

@@ -24,6 +24,7 @@ class WindowBatch:
     reward: torch.Tensor  # (k, n)
     done: torch.Tensor  # (k, n) termination label of states 1..k
     frame: torch.Tensor  # (k, n) target frame of each transition
+    r_terms: torch.Tensor | None = None  # (k, n, K) per-term rewards, when learned heads exist
 
 
 @dataclass
@@ -47,6 +48,8 @@ class ReplayBuffer:
         self.a_exec = f(act_dim)
         self.xi = f(xi_dim)
         self.r = f()
+        #: optional per-term rewards (n_terms,), used to supervise learned reward heads
+        self.r_terms = None
         self.done = f()
         self.frame = torch.zeros(E, T, dtype=torch.long, device=self.device)
         self.clip = torch.zeros(E, T, dtype=torch.long, device=self.device)
@@ -62,13 +65,17 @@ class ReplayBuffer:
     # ------------------------------------------------------------------ writes
 
     @torch.no_grad()
-    def add(self, env_ids, s, a, a_exec, xi, r, done, frame, clip, terminal, ep_start) -> None:
+    def add(self, env_ids, s, a, a_exec, xi, r, done, frame, clip, terminal, ep_start, r_terms=None) -> None:
         p = self.ptr[env_ids]
         self.s[env_ids, p] = s
         self.a[env_ids, p] = a
         self.a_exec[env_ids, p] = a_exec
         self.xi[env_ids, p] = xi
         self.r[env_ids, p] = r
+        if r_terms is not None:
+            if self.r_terms is None:
+                self.r_terms = torch.zeros(self.E, self.T, r_terms.shape[-1], device=self.device)
+            self.r_terms[env_ids, p] = r_terms
         self.done[env_ids, p] = done
         self.frame[env_ids, p] = frame
         self.clip[env_ids, p] = clip
@@ -134,6 +141,7 @@ class ReplayBuffer:
             reward=self.r[ee[:-1], tt[:-1]],
             done=self.done[ee[1:], tt[1:]],
             frame=self.frame[ee[:-1], tt[:-1]],
+            r_terms=None if self.r_terms is None else self.r_terms[ee[:-1], tt[:-1]],
         )
 
     @torch.no_grad()

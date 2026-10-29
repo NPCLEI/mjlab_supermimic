@@ -287,6 +287,13 @@ class SuperMimicRunner:
         # transition rows (state before the step -> state after it). Skipped when the
         # environment records them itself (adapter.writes_buffer == False); two writers
         # into one ring buffer would scramble the sampled windows.
+        r_terms = None
+        if self._writes_buffer:
+          cols = self.heads.learned_columns(env) if hasattr(self.heads, "learned_columns") else ()
+          mgr = getattr(env, "reward_manager", None)
+          step_reward = getattr(mgr, "_step_reward", None)
+          if cols and torch.is_tensor(step_reward):
+            r_terms = step_reward.detach()[:, list(cols)].to(torch.float32)
         if self._writes_buffer:
           self.buffer.add(
             env_ids,
@@ -367,6 +374,23 @@ class SuperMimicRunner:
             m_r = self.heads.update(self.buffer, self.reward_cfg_rm, self.reward_opt)
         except RuntimeError:
           m_r = {}
+      # the learned reward heads must be fitted before the policy may consume them; until then only
+      # the world model and the heads train (an untrained head is noise, measured 14% reward error)
+      learned = getattr(self.heads, "learned", None)
+      min_corr = float(getattr(getattr(cfg, "learned_cfg", None), "min_corr", 0.9))
+      if learned is not None and depth >= 2:
+        if not hasattr(self, "_learned_opt"):
+          self._learned_opt = torch.optim.Adam(learned.parameters(), lr=float(getattr(getattr(cfg, "learned_cfg", None), "lr", 3e-4)))
+        if getattr(self.buffer, "r_terms", None) is not None:
+          try:
+            m_learned = learned.update(self.buffer, getattr(cfg, "learned_cfg", None), self._learned_opt)
+          except RuntimeError:
+            m_learned = {}
+      learned_ready = True if learned is None else learned.ready(min_corr)
+      if learned is not None and not learned_ready and self.iteration % 50 == 0:
+        corr = ", ".join(f"{n}={float(learned.corr[k]):+.2f}" for k, n in enumerate(learned.names))
+        print(f"[wm-spec] learned reward not ready (min corr {min_corr}): {corr}; "
+              f"policy updates are held until it is", flush=True)
       if self.iteration >= sch.warmup_iterations and depth >= need_rows:
         self._utd_acc += sch.updates_per_env_step
         while self._utd_acc >= 1.0:
@@ -391,7 +415,7 @@ class SuperMimicRunner:
           timers["wm"] += time.perf_counter() - t0
           t0 = time.perf_counter()
           start_pi = int(getattr(cfg, "policy_start_updates", 0) or 0)
-          if self.num_updates >= start_pi:
+          if self.num_updates >= start_pi and learned_ready:
             for _ in range(sch.policy_updates_per_wm_update):
               m_pi = self.policy_trainer.update(self.buffer)
               if getattr(self, "ema_tau", 0.0) > 0.0:
