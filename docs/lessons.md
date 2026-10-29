@@ -308,3 +308,25 @@ register_mjlab_task(
     runner_cls=SuperMimicOnPolicyRunner,
 )
 ```
+
+### 9.7 哪些奖励项学不到（实测，决定"去掉"的清单）
+
+在 stock 13 项配置上跑约 1600 迭代，learned 头回归环境自己算的每项数值，最终的相关系数：
+
+| 项 | corr | 结论 |
+|---|---:|---|
+| `angular_momentum` | **0.99–1.00** | 可学 |
+| `pose` | 0.84–0.85 | 学不到 0.9 |
+| `foot_clearance` | 0.69–0.83 | 学不到 0.9 |
+| `soft_landing` | 0.44–0.78 | 学不到 0.9 |
+| `foot_slip` | 0.51–0.63 | 学不到 0.9 |
+| `foot_swing_height` | 0.38–0.51 | 学不到 0.9 |
+| `self_collisions` | 0.22–0.71 | 学不到 0.9 |
+
+`foot_slip` / `foot_swing_height` 本质不能由 `(s, a, ξ)` 唯一决定（取决于接触与相位），`pose` / `foot_clearance`
+依赖相位。**结论：这些项从奖励里去掉**，环境与想象同时去掉，保证两边一致——这正是 `-SM` 任务的默认
+（`CONTACT_TERMS` 把这 8 项权重置零，剩下 6 个解析可算项）。
+
+闸门行为：learned 项 `corr < min_corr (0.9)` 期间**策略更新被挂起**并打印每项相关性（每 500 迭代一次），
+不会拿 0.4 相关的代理去训练。
+

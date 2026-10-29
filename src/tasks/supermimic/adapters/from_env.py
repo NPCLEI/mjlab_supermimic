@@ -176,6 +176,32 @@ class WmSpec:
     names = list(getattr(env.reward_manager, "active_terms", []))
     return tuple(names.index(n) for n in self.learned.names if n in names)
 
+  def drop_terms(self, names: tuple[str, ...] | list[str]) -> list[str]:
+    """Remove reward terms from both the environment config and the imagined reward."""
+    if not names:
+      return []
+    dropped: list[str] = []
+    rewards = getattr(self.env.cfg, "rewards", {}) or {}
+    for name in names:
+      term_cfg = rewards.get(name)
+      if term_cfg is not None:
+        term_cfg.weight = 0.0  # the environment stops paying it too
+      dropped.append(name)
+    self.reward_terms = tuple(
+      WmTermSpec(name=t.name, weight=t.weight, kind="unavailable", fn=None, group=t.group, params=t.params)
+      if t.name in dropped
+      else t
+      for t in self.reward_terms
+    )
+    self.reward_term_names = tuple(n for n in self.reward_term_names if n not in dropped)
+    positives = sum(t.weight for t in self.reward_terms if t.weight > 0.0)
+    self.max_step_reward = self.dt * positives
+    self.reward_cfg = RewardCfgShim(self.max_step_reward, self.dt)
+    if self.learned is not None:
+      keep = tuple(n for n in self.learned.names if n not in dropped)
+      self.learned.names = keep
+    return dropped
+
   # ------------------------------------------------------------------ state / context
   def state(self, env) -> torch.Tensor:
     return self.provider.state(env)

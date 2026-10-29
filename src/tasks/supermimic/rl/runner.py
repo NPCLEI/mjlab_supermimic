@@ -395,8 +395,16 @@ class SuperMimicRunner:
         rt = getattr(self.buffer, 'r_terms', None)
         _m = {k: round(float(v), 3) for k, v in (m_learned or {}).items() if 'corr' in k or 'mse' in k}
         print('[dbg-learned] it', self.iteration, 'cols', cols, 'step_reward', None if sr is None else tuple(sr.shape), 'buffer.r_terms', None if rt is None else tuple(rt.shape), 'metrics', _m, flush=True)
+      if learned is not None and not getattr(self, '_learned_probe_done', False) and self.iteration >= int(getattr(cfg, 'learned_probe_iterations', 400)):
+        self._learned_probe_done = True
+        pair = [(n, float(learned.corr[k])) for k, n in enumerate(learned.names)]
+        good = [n for n, c in pair if c >= min_corr]
+        bad = [n for n, c in pair if c < min_corr]
+        print('[wm-spec] learned reward probe after', self.iteration, 'iterations:', ', '.join(f'{n}={c:+.2f}' for n, c in pair), flush=True)
+        if bad:
+          print('[wm-spec]', len(bad), 'term(s) below corr', min_corr, 'are not predictable from (s,a,xi):', bad, '-- remove them from env_cfg.rewards (the default -SM task zeroes all contact/appearance terms, leaving', len(self.heads.reward_term_names), 'analytic ones); policy updates stay held while any remain', flush=True)
       learned_ready = True if learned is None else learned.ready(min_corr)
-      if learned is not None and not learned_ready and self.iteration % 50 == 0:
+      if learned is not None and not learned_ready and self.iteration % 500 == 0:
         corr = ", ".join(f"{n}={float(learned.corr[k]):+.2f}" for k, n in enumerate(learned.names))
         print(f"[wm-spec] learned reward not ready (min corr {min_corr}): {corr}; "
               f"policy updates are held until it is", flush=True)
