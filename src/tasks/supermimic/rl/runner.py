@@ -181,6 +181,33 @@ class SuperMimicRunner:
     if fn is not None:
       fn(self.env, ids)
 
+
+  # ------------------------------------------------------------------ optional demonstration seed
+  def seed_from(self, path: str | Path, device: str) -> int:
+    """Write a recorded demonstration into the replay buffer. Returns the number of rows."""
+    import torch
+
+    data = torch.load(path, map_location=device, weights_only=False)
+    s_all, a_all, xi_all, r_all, d_all = (data[k] for k in ("s", "a", "xi", "r", "done"))
+    steps, n = s_all.shape[0], s_all.shape[1]
+    ids = torch.arange(n, device=device)
+    for t in range(steps):
+      self.buffer.add(
+        ids,
+        s=s_all[t].to(device),
+        a=a_all[t].to(device),
+        a_exec=a_all[t].to(device),
+        xi=xi_all[t].to(device),
+        r=r_all[t].to(device),
+        done=d_all[t].to(device),
+        frame=torch.zeros(n, dtype=torch.long, device=device),
+        clip=torch.zeros(n, dtype=torch.long, device=device),
+        terminal=d_all[t].to(torch.bool).to(device),
+        ep_start=(t == 0) * torch.ones(n, dtype=torch.bool, device=device),
+      )
+    print(f"[seed] wrote {steps * n} demonstration rows from {path}", flush=True)
+    return steps * n
+
   # ------------------------------------------------------------------ checkpoints
   def save(self, name: str = "ckpt_latest.pt") -> Path:
     path = self.log_dir / name
@@ -214,6 +241,8 @@ class SuperMimicRunner:
 
   # ------------------------------------------------------------------ loop
   def learn(self, num_iterations: int | None = None, max_hours: float | None = None) -> None:
+    if getattr(self.cfg, 'seed_path', ''):
+      self.seed_from(self.cfg.seed_path, self.device)
     cfg = self.cfg
     sch = cfg.schedule
     env = self.env

@@ -41,6 +41,8 @@ class SuperMimicCfg(TrainConfig):
   #: learn r(s, a, xi) from the replay buffer instead of hand-written analytic terms
   #: (mandatory for tasks whose reward needs contact forces)
   reward_model: bool = False
+  #: optional recorded demonstration (scripts/seed_buffer.py) written into the replay buffer
+  seed_path: str = ""
   #: refuse to start when a reward term cannot be evaluated in imagination (recommended)
   strict: bool = True
   #: terms without an analytic projection are learned from the env's per-term values
