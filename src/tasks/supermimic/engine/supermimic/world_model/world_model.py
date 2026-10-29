@@ -10,6 +10,7 @@ import torch.nn.functional as F
 
 from supermimic.world_model.dynamics import MLP, DynamicsMLP
 from supermimic.world_model.heads import AnalyticHeads, ReferenceFrame
+from supermimic.world_model.norm import RunningNorm
 from supermimic.world_model.state_spec import StateSpec, StateSpecCfg
 
 
@@ -21,6 +22,8 @@ class WorldModelCfg:
     term_loss_weight: float = 1.0
     height_threshold: float = 0.25
     tilt_threshold: float = 0.8
+    #: running input normalisation of (state features, action, xi); see world_model/norm.py
+    input_norm: bool = True
 
 
 class TerminationHead(nn.Module):
@@ -45,6 +48,10 @@ class WorldModel(nn.Module):
         self.dynamics = DynamicsMLP(hidden=cfg.hidden)
         self.term_head = TerminationHead(cfg.term_hidden, cfg.height_threshold, cfg.tilt_threshold)
         self.heads = heads  # analytic observation / reward / FK (no parameters)
+        if cfg.input_norm:
+            self.norm_feat = RunningNorm(self.spec.feat_dim)
+            self.norm_act = RunningNorm(29)
+            self.norm_xi = RunningNorm(33)
         self.to(device)
 
     # ------------------------------------------------------------------ one step
@@ -52,7 +59,10 @@ class WorldModel(nn.Module):
     def step(self, s: torch.Tensor, action: torch.Tensor, xi: torch.Tensor) -> torch.Tensor:
         """s_{t+1} = integrate(s_t, f(s_t, a_t, xi))."""
         feat = self.spec.canonical(s)
-        delta = self.dynamics(feat, action, self.spec.normalize_xi(xi))
+        xi_n = self.spec.normalize_xi(xi)
+        if self.cfg.input_norm:
+            feat, action, xi_n = self.norm_feat(feat), self.norm_act(action), self.norm_xi(xi_n)
+        delta = self.dynamics(feat, action, xi_n)
         return self.spec.integrate(s, delta)
 
     def termination_logits(self, s_next: torch.Tensor, ref: ReferenceFrame) -> torch.Tensor:
@@ -81,6 +91,11 @@ class WorldModel(nn.Module):
         done: (k, n) termination label of states 1..k; refs[j]: reference of transition j (for the
         termination features of state j+1).
         """
+        if self.cfg.input_norm:
+            # statistics come from real logged transitions only; imagination never updates them
+            self.norm_feat.update(self.spec.canonical(states[0]))
+            self.norm_act.update(a_exec[0])
+            self.norm_xi.update(self.spec.normalize_xi(xi))
         k = a_exec.shape[0]
         s = states[0]
         total_state = 0.0

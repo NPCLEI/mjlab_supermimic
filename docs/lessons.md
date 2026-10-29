@@ -229,3 +229,82 @@
 2. **补 fall/get-up 短板**：用 125 条倒地类动作从 0.8248 权重微调 1–2 h（等价论文"3 h → 9.8 h"的增量），目标 6/6 失败 → 0–1。论文同类在 9.8 h 后归零，社区也有专门做 getup 的复现。
 3. **稀有类重采样**：倒地类仅占 0.6%（125/22246），按条均匀采样拿不到足够样本；`sampling_mode=return` 只按回报加权，不补偿类别稀缺。
 4. **速度任务的备选两条路**：先用 PPO 训会走的策略再灌进回放缓冲（`scripts/seed_buffer.py` 已就绪）；或改奖励地形（`upright` 1.0→0.1、追踪项 5.0）让"站着"不再是局部最优（已验证会开始学，但仍未证明能走出步态）。
+## 九、重构落地：`rl_cfg` 与 `env_cfg` 分离（2026-10-29）
+
+### 9.1 契约
+
+新增 `rl/spec.py`（`WmTermSpec` / `RewardCtx` / `SpecReport`）与 `adapters/from_env.py`
+（`build_wm_spec(env, cfg)`）。奖励与终止**从 `env.cfg` 反射**，不再有第二份手写实现：
+
+| 通道 | 判定 | 处理 |
+|---|---|---|
+| `analytic` | 该 term **名字**在 `adapters/terms/registry.py` 注册（tracking 8 项、command 6 项）| 在预测状态上精确计算，与原实现逐位一致 |
+| `learned`（默认）| 未注册（需要接触力/传感器）| 每项一个小 MLP，用 **env 自己算的每项数值**（`buffer.r_terms`）监督；`corr ≥ 0.9` 才允许策略使用；输出 `mean±5σ` 限幅；warmup 期预训练 |
+| `unavailable` | 既不可解析也不学习 | `strict=True` 时**启动即报错**，否则打印被丢项 |
+
+启动必打印：
+```
+[wm-spec] analytic 8 | learned 0 | dropped 0 | max_step_reward 0.1000
+```
+
+### 9.2 等价性验收（1307 tracking，硬门槛）
+
+同一状态/动作/参考下，新旧路径逐项比对：
+
+```
+term                          legacy          spec      max|diff|
+motion_global_root_pos    +0.00102955   +0.00102955   0.0e+00
+motion_body_pos           +0.01261960   +0.01261960   9.3e-10
+motion_body_ang_vel       +0.01371508   +0.01371508   0.0e+00
+action_rate_l2            -0.00937071   -0.00937071   0.0e+00
+total                     +0.03265205   +0.03265205   3.7e-09
+observation max|diff| 0.0        termination features 0.0        terminated 一致
+```
+
+### 9.3 输入归一化（A/B 实测，1307）
+
+引擎新增 `world_model/norm.py`：状态特征/动作/ξ 各自 running mean/var，**只在 `window_loss`（真实转移）更新**，想象里不更新；输出层本就零初始化。
+
+| 迭代 | 无归一化（基线 cin1）| **有归一化** | 变化 |
+|---|---:|---:|---|
+| it 50 `nse8` | 1.0207 | **0.7791** | −24% |
+| it 3000 `nse1` | 0.0238 | **0.0098** | **−59%** |
+| it 3000 `nse8` | 0.0625 | **0.0213** | **−66%** |
+| it 3000 benchmark | 0.481 | **0.496** | +3% |
+| it 4000 benchmark | ~0.52 | **0.545** | +5% |
+| it 4400 `nse1/nse8` | — | **0.0036 / 0.0078** | 已达基线 18000 迭代的水平 |
+
+**结论：输入归一化让世界模型收敛快 2.4 倍，且真实回报不降反升（+3~5%）。**
+
+### 9.4 本轮抓到的 4 个真 bug（都是等价性/端到端验证暴露的）
+
+| bug | 症状 | 修法 |
+|---|---|---|
+| 注册表只按函数对象匹配 | tracking 的 8 项定义在引擎自己的 `supermimic.envs.mdp.rewards`，`getattr(mjlab.mdp, ...)` 全 None → **7 项被误判成 learned**，奖励差 5e-2 | 改为**按 term 名字注册** + 绑定函数对象 |
+| `RunningNorm` 被非有限样本污染 | 速度任务摔倒后出现 NaN 状态 → running 均值/方差永久 NaN → 后续 loss 全 NaN（`nse1 nan`）| `nan_to_num` 后再统计，forward 同样sanitise |
+| `WmSpec` 未声明 runner 契约标志 | `auto_reset` 默认 False 而 env 也自动复位 → **双重复位**，episode 变 1 步、回报 −4.2 | 从 `env.cfg.auto_reset` 与是否存在 `replay` recorder **推导** `auto_reset` / `writes_buffer` |
+| command 类任务未建 heads | 速度任务的 6 个状态项全被判 learned（未训练→≈0）| `_build_heads` 对非 tracking 任务构造 `VelocityHeads` |
+
+### 9.5 端到端验证
+
+| 任务 | 结果 |
+|---|---|
+| tracking 1307 | 奖励/观测/终止与旧实现等价（3.7e-9 / 0.0 / 一致）|
+| velocity（命令类）| `[wm-spec] analytic 6 | learned 0`，`nse1 0.0007`、`tbce 0.002`、episode ~70 步、`train_ret +0.15` —— 与旧 adapter 路径同量级 |
+
+### 9.6 现在的调用形态
+
+```python
+register_mjlab_task(
+    task_id="Mjlab-EE-Tracking-Unitree-G1",
+    env_cfg=unitree_g1_motions_all_tracking_env_cfg(),   # 奖励/终止怎么写都行
+    play_env_cfg=unitree_g1_motions_all_tracking_env_cfg(play=True),
+    rl_cfg=supermimic_runner_cfg(                          # 只有训练超参
+        world_model=WorldModelCfg(input_norm=True),
+        policy_trainer=PolicyTrainerCfg(batch_size=4096, horizon=32, lr=2e-4),
+        schedule=ScheduleCfg(max_hours=8, warmup_iterations=40),
+        strict=True,
+    ),
+    runner_cls=SuperMimicOnPolicyRunner,
+)
+```

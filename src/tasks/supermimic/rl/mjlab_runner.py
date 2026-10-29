@@ -53,7 +53,10 @@ class SuperMimicOnPolicyRunner:
     raw = getattr(env, "unwrapped", env)
     sm_cfg = _cfg_from_dict(cfg)
     if adapter is None:
-      adapter = make_adapter(raw, sm_cfg)
+      # reflect the task from env.cfg; no per-task adapter is needed on the spec path
+      from src.tasks.supermimic.adapters.from_env import build_wm_spec
+
+      adapter = build_wm_spec(raw, sm_cfg)
     # history comes from the adapter, so this must run *after* the adapter is resolved
     adapter_hist = int(getattr(adapter, "history", 0) or 0)
     if adapter_hist > 0:

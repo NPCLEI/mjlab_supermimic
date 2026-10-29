@@ -39,6 +39,10 @@ class SuperMimicCfg(TrainConfig):
   #: learn r(s, a, xi) from the replay buffer instead of hand-written analytic terms
   #: (mandatory for tasks whose reward needs contact forces)
   reward_model: bool = False
+  #: refuse to start when a reward term cannot be evaluated in imagination (recommended)
+  strict: bool = True
+  #: terms without an analytic projection are learned from the env's per-term values
+  learned_rewards: bool = True
   #: mjlab task id used by the "velocity" adapter
   task_id: str = "Mjlab-Velocity-Flat-Unitree-G1"
   #: override the policy/critic observation size (normally inferred from the adapter)

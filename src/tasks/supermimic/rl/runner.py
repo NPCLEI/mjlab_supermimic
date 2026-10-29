@@ -63,8 +63,12 @@ class SuperMimicRunner:
     self.writer = SummaryWriter(str(self.log_dir / "tb"))
     (self.log_dir / "config.json").write_text(json.dumps(asdict(cfg), indent=2, default=str))
 
-    if adapter is None and (lib is None or heads is None):
-      raise ValueError("pass either an adapter or both lib and heads")
+    if adapter is None:
+      # reflect the task from env.cfg (rewards, terminations, observation, command) -- this is the
+      # only place a task is interpreted, and it takes no per-task code
+      from src.tasks.supermimic.adapters.from_env import build_wm_spec
+
+      adapter = build_wm_spec(env, cfg)
 
     # ---- task surface -----------------------------------------------------
     self.lib = lib if lib is not None else adapter.build_lib()

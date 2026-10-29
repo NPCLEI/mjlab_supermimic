@@ -60,6 +60,7 @@ class StateSpecCfg:
 
 class StateSpec:
     def __init__(self, cfg: StateSpecCfg, device, dtype=torch.float32):
+        self.feat_dim = FEAT_DIM
         self.cfg = cfg
         self.dt = cfg.dt
         rep = lambda scales, sizes: torch.cat([torch.full((n,), float(s)) for s, n in zip(scales, sizes)])  # noqa: E731

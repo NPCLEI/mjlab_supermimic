@@ -39,12 +39,16 @@ def _velocity_env_cfg(play: bool = False):
   for name in CONTACT_TERMS:
     if name in cfg.rewards:
       cfg.rewards[name].weight = 0.0
-  # "standing still" was the local optimum: the posture term pays in full while both tracking terms
-  # saturate near zero at standstill. Make moving worth 25x standing.
-  if "track_linear_velocity" in cfg.rewards:
-    cfg.rewards["track_linear_velocity"].weight = 5.0
-  if "upright" in cfg.rewards:
-    cfg.rewards["upright"].weight = 0.1
+  # Reward reshaping experiment (opt-in): dropping upright to 0.1 makes moving worth 25x standing, but
+  # it also removes the robot's incentive to stay upright and the policy falls immediately. Keep the
+  # stock weights unless the experiment is explicitly enabled.
+  import os
+
+  if os.environ.get("SM_RESHUFFLE_REWARD"):
+    if "track_linear_velocity" in cfg.rewards:
+      cfg.rewards["track_linear_velocity"].weight = 5.0
+    if "upright" in cfg.rewards:
+      cfg.rewards["upright"].weight = 0.1
   # freeze the command ranges: the curriculum raises them as the tracking reward improves, which
   # is indistinguishable from a policy collapse when the algorithm is being validated
   if "command_vel" in getattr(cfg, "curriculum", {}):
