@@ -307,6 +307,7 @@ class SuperMimicRunner:
             clip=self._prev_clip,
             terminal=(done.clone() if (self._auto_reset and self._writes_buffer) else torch.zeros_like(done)),
             ep_start=self._ep_start,
+            r_terms=r_terms,
           )
         self._ep_start[:] = False
 
@@ -376,16 +377,24 @@ class SuperMimicRunner:
           m_r = {}
       # the learned reward heads must be fitted before the policy may consume them; until then only
       # the world model and the heads train (an untrained head is noise, measured 14% reward error)
+      m_learned: dict = {}
       learned = getattr(self.heads, "learned", None)
-      min_corr = float(getattr(getattr(cfg, "learned_cfg", None), "min_corr", 0.9))
+      min_corr = float(getattr(cfg.learned_cfg, "min_corr", 0.9))
       if learned is not None and depth >= 2:
         if not hasattr(self, "_learned_opt"):
-          self._learned_opt = torch.optim.Adam(learned.parameters(), lr=float(getattr(getattr(cfg, "learned_cfg", None), "lr", 3e-4)))
+          self._learned_opt = torch.optim.Adam(learned.parameters(), lr=float(getattr(cfg.learned_cfg, "lr", 3e-4)))
         if getattr(self.buffer, "r_terms", None) is not None:
           try:
-            m_learned = learned.update(self.buffer, getattr(cfg, "learned_cfg", None), self._learned_opt)
+            m_learned = learned.update(self.buffer, cfg.learned_cfg, self._learned_opt)
           except RuntimeError:
             m_learned = {}
+      if learned is not None and __import__("os").environ.get("SM_DEBUG_LEARNED") and self.iteration in (50, 200, 400):
+        cols = self.heads.learned_columns(env) if hasattr(self.heads, 'learned_columns') else ()
+        mgr = getattr(env, 'reward_manager', None)
+        sr = getattr(mgr, '_step_reward', None)
+        rt = getattr(self.buffer, 'r_terms', None)
+        _m = {k: round(float(v), 3) for k, v in (m_learned or {}).items() if 'corr' in k or 'mse' in k}
+        print('[dbg-learned] it', self.iteration, 'cols', cols, 'step_reward', None if sr is None else tuple(sr.shape), 'buffer.r_terms', None if rt is None else tuple(rt.shape), 'metrics', _m, flush=True)
       learned_ready = True if learned is None else learned.ready(min_corr)
       if learned is not None and not learned_ready and self.iteration % 50 == 0:
         corr = ", ".join(f"{n}={float(learned.corr[k]):+.2f}" for k, n in enumerate(learned.names))

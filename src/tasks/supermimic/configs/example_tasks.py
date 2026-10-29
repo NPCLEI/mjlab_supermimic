@@ -36,9 +36,12 @@ CONTACT_TERMS = (
 
 def _velocity_env_cfg(play: bool = False):
   cfg = unitree_g1_flat_env_cfg()
-  for name in CONTACT_TERMS:
-    if name in cfg.rewards:
-      cfg.rewards[name].weight = 0.0
+  import os
+
+  if not os.environ.get("SM_STOCK_REWARDS"):
+    for name in CONTACT_TERMS:
+      if name in cfg.rewards:
+        cfg.rewards[name].weight = 0.0
   # Reward reshaping experiment (opt-in): dropping upright to 0.1 makes moving worth 25x standing, but
   # it also removes the robot's incentive to stay upright and the policy falls immediately. Keep the
   # stock weights unless the experiment is explicitly enabled.

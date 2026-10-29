@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from src.tasks.supermimic.adapters.terms.learned import LearnedRewardCfg
+
 from supermimic.config import (  # the vendored engine's config types
   DataCfg,
   EnvCfg,
@@ -43,6 +45,8 @@ class SuperMimicCfg(TrainConfig):
   strict: bool = True
   #: terms without an analytic projection are learned from the env's per-term values
   learned_rewards: bool = True
+  #: hyper-parameters of the learned reward heads (hidden / lr / corr gate / clipping)
+  learned_cfg: LearnedRewardCfg = field(default_factory=LearnedRewardCfg)
   #: mjlab task id used by the "velocity" adapter
   task_id: str = "Mjlab-Velocity-Flat-Unitree-G1"
   #: override the policy/critic observation size (normally inferred from the adapter)
