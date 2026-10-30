@@ -269,8 +269,14 @@ vs `wm dv [-0.003, +0.006, -0.022]`），想象里"迈步"几乎不值钱，而�
 
 ## 9. 许可与致谢
 
-代码 MIT（以仓库所有者选择为准）。方法来自 Liao 等，*SuperMimic*，CoRL 2026；mjlab、MuJoCo、MuJoCo Warp
-按原许可使用。
+**本仓库是复现工作，功劳属于 SuperMimic 的作者**。感谢 Q. Liao、Y. Shao、J. Long、K. Zakka、
+R. Horowitz、P. Abbeel、K. Sreenath 的 *SuperMimic: Scaling Humanoid Whole-Body Control with One
+Differentiable World Model*（CoRL 2026，[arXiv:2610.28480](https://arxiv.org/abs/2610.28480)，
+项目页 <https://supermimic.github.io>）：世界模型、可微奖励与终止头、想象展开的训练目标、critic 自举
+以及速度编码器的设计都来自该论文，上面每一个数字都是按论文附录 F 协议评测的。本代码为独立实现，
+与原作者无关，也未经其背书。
+
+代码 MIT（以仓库所有者选择为准）；mjlab、MuJoCo、MuJoCo Warp 按原许可使用。
 
 全量库实验所用的动作数据由两个来源重定向而来，均不随仓库分发：
 

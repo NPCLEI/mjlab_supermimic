@@ -302,8 +302,16 @@ how they were fixed).
 
 ## 9. License and acknowledgements
 
-Code MIT (pending the repository owner's choice). Method from Liao et al., *SuperMimic*, CoRL 2026;
-mjlab, MuJoCo and MuJoCo Warp are used unmodified.
+**This repository is a reproduction, and the credit belongs to the SuperMimic authors.** Thanks to
+Q. Liao, Y. Shao, J. Long, K. Zakka, R. Horowitz, P. Abbeel and K. Sreenath for
+*SuperMimic: Scaling Humanoid Whole-Body Control with One Differentiable World Model*
+(CoRL 2026, [arXiv:2610.28480](https://arxiv.org/abs/2610.28480), project page
+<https://supermimic.github.io>): the world model, the differentiable reward and termination heads, the
+imagined-rollout objective, the critic bootstrap and the velocity-encoder design are all theirs, and the
+paper's Appendix F protocol is what every number above is measured against. This code is an independent
+re-implementation and is not affiliated with or endorsed by the authors.
+
+Code MIT (pending the repository owner's choice). mjlab, MuJoCo and MuJoCo Warp are used unmodified.
 
 The motion library used for the whole-library experiments is retargeted from two sources, and neither is
 redistributed here:
