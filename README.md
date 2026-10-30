@@ -281,7 +281,9 @@ Two engineering findings are consistent across all of them and match this reposi
 | Released weights | – | – | **✓ 223 MB** | ✓ | **✓ policy + WM** | – |
 | Ablations beyond the paper | ~ | **✓ critic/H, push recovery** | – | **✓ H, critic, push, BPTT vs PPO** | ✓ (3 factors) | ~ (bf16, critic features) |
 | Render / viewer tooling | ✓ viewer + clip selector | **✓ render + video tools** | ✓ media | ✓ render rollouts | ✓ MuJoCo play | ✓ video vs RGMT |
-| Tests | ✓ equivalence + smoke | – | ✓ | ✓ | ✓ | **✓ 37 tests** |
+| Tests | ✓ 	ests/test_reward_equivalence.py (contract proof, 3.7e-9) | – | ✓ | ✓ | ✓ | **✓ 37 tests** |
+
+
 
 ### 7.2 Where this repository is genuinely ahead, and where it is not
 
@@ -317,6 +319,35 @@ Two engineering findings are consistent across all of them and match this reposi
    BPTT-vs-PPO; this repository runs the normalisation A/B and the reward-channel study only.
 
 ---
+
+### 7.3 Head-to-head with [`supermimic_mjlab`](https://github.com/Breezewrf/supermimic_mjlab)
+
+This is the closest comparison in the list: both are mjlab / MuJoCo Warp reproductions of the same paper
+on the same robot, so the differences are design choices rather than stack differences.
+
+| | **supermimic_mjlab** | **this repository** | edge |
+|---|---|---|---|
+| Robot / physics | mjlab PD control, vendored RoboJuDo-Plus G1 (`g1_29dof_rev_1_0.xml`), self-collisions off | mjlab PD control, mjlab G1 29 DoF, self-collisions off | tie |
+| Training scale for the headline result | 4096 envs, 15,000 iterations ≈ **4 h on one A6000 48 GB** (FP32) | 1024 envs, 18,000 iterations ≈ **8 h on one RTX 4090** (24 GB) | **theirs** (faster, bigger card) |
+| Headline benchmark | 40 LAFAN1 clips (2.45 h): **0.8528, 40/40, 100 % completion** | one 315.8 s clip: **0.849, 15,792/15,792 steps, 0 failures**; 300-clip subset: **0.8248** | **theirs** on breadth, **ours** on library scale |
+| Motion data | 40 clips (LAFAN1 retargets) | **22,246 clips / 313 h**, self-built pack (5.74 GB, built in 11.6 s) | **ours** |
+| How a task is declared | `config/task_cfg.py` + `rl_cfg.py` (`OnlineConfig`) as plain dataclasses; task code lives in `env.py`, `mdp/`, `models/` | `register_mjlab_task(task_id, env_cfg, play_env_cfg, rl_cfg, runner_cls)`; rewards/terminations **reflected** from `env_cfg`; `rl_cfg` holds no task knowledge; `strict=True` refuses to start on unevaluable terms | **ours** |
+| Proof the objective is unchanged | not reported | `tests/test_reward_equivalence.py`: every term, the observation frame and the termination **equal the legacy implementation**, worst `3.7e-9`, exit code gated | **ours** |
+| Non-analytic reward terms | implemented directly per task; no learned channel | learned heads supervised by the environment's own per-term values, gated at `corr ≥ 0.9`, with the measured correlation of every term published (§2.4) | **ours** |
+| Normalisation | reported as a key ablation factor (single-run comparison) | A/B with a full per-iteration curve: `nse1` 2.4x better at 3k, return +2–6 % (§2.3) | ~ |
+| Ablations | configuration table (normalisation, orientation anchor, LR schedule) as described by the project | normalisation A/B + reward-channel study; no H / critic / anchor ablation | **theirs** |
+| Velocity controller | full subsystem (`velocity_cfg`, `mdp/velocity.py`, `velocity_commands`, `models/velocity_policy.py`, `rl/velocity_*`, `train/evaluate/play_velocity`, 4 test files, 16 KB design doc) — its documentation states the pipeline is validated but **the converged policy and the 672-condition evaluation were not run** | `Policy.encoders["velocity"]` + 930-dim engine-layout history + 672-condition step test; **four configurations measured, all 0/64**, plus the measured ceiling (action sensitivity 11.6 %) | ~ (theirs has the more complete subsystem; both lack a result) |
+| Released weights | **yes** — `policy_best.pt` (52.5 MB) + `world_model_best.pt` (35.3 MB) + a 10k preview | no | **theirs** |
+| Documentation | 6+ guides (setup, training & playback, LAFAN conversion, foundation, world model, online), English and Chinese | `README.md` / `README_zh.md`, `docs/lessons.md` (403 lines), `docs/RESULTS.md` (213 lines) | **theirs** on onboarding, **ours** on failure analysis |
+| Tests | regression tests across data, world model, checkpointing, playback, normalisation, velocity | 1 equivalence test (the contract proof) — much narrower | **theirs** |
+
+**Summary.** `supermimic_mjlab` is the better *paper reproduction*: a 40/40 result on a standard
+benchmark in four hours, released weights, a configuration ablation and a complete velocity subsystem
+that is documented rather than hand-waved. This repository is the better *platform*: tasks are declared
+through a reflected contract whose equivalence is a test, the library is five times larger and measured
+for generalisation rather than memorisation, and every negative result ships with the measurement that
+produced it. If the goal is to reproduce the paper, use theirs; if the goal is to add a task and trust the
+number, use this one.
 
 ## 8. Limitations
 
