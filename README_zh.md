@@ -1,5 +1,7 @@
 # SuperMimic in mjlab（中文）
 
+[English](README.md) | 简体中文
+
 **SuperMimic: Scaling Humanoid Whole-Body Control with One Differentiable World Model**（CoRL 2026,
 [arXiv:2610.28480](https://arxiv.org/abs/2610.28480)）在 Unitree G1 + [mjlab](https://github.com/mujocolab/mjlab) /
 MuJoCo Warp 上的复现；并对"如何声明一个 SuperMimic 任务"做了重构，使新增任务变成两行注册而不是新写一个子类。

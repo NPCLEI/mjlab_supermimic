@@ -1,5 +1,7 @@
 # SuperMimic in mjlab
 
+English | [简体中文](README_zh.md)
+
 A reproduction of **[SuperMimic: Scaling Humanoid Whole-Body Control with One Differentiable World
 Model](https://arxiv.org/abs/2610.28480)** (CoRL 2026) on the Unitree G1 in
 [mjlab](https://github.com/mujocolab/mjlab) / MuJoCo Warp — plus a rework of how a SuperMimic task is
