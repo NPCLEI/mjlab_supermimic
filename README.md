@@ -261,6 +261,61 @@ Two engineering findings are consistent across all of them and match this reposi
 * **Input normalisation** is reported as essential (Breezewrf), and measured here as a 2.4x faster world
   model with a 2–6 % higher return (§2.3).
 
+### 7.1 Capability matrix
+
+`✓` present, `~` partial, `–` absent, as stated by each project's own documentation.
+
+| | **this repo** | vibed (716★) | CuboiLeo (315★) | dhmbb2 | Breezewrf | Supermimic_mod |
+|---|---|---|---|---|---|---|
+| Self-built motion library | **✓ 22,246 clips / 313 h** | – (40 LAFAN1) | – (BONES-SEED 129k) | – (40 LAFAN1) | – (40 LAFAN1) | – (40 LAFAN1) |
+| Whole-library generalisation measured | **✓ generalist > specialist** (0.8248 vs 0.7156) | – | – | – | – | – |
+| Longest evaluated single clip | **315.8 s → 0.849, 0 failures** | ~300 s (40 clips) | 100–300 s → 0.904 (anchor) | ~300 s → 0.947 | ~300 s → 0.8528 | ~300 s → 0.80+ |
+| Fall/get-up class reported | **✓ 0.6703 (6/6 fail, honest)** | ~ (clips included) | ✓ (acrobatics analysed) | ~ | – | – |
+| Task declared without touching the trainer | **✓ `register_mjlab_task(..., rl_cfg)`** | – | – | – | – | – |
+| Reward/termination contract verification | **✓ 3.7e-9 term-by-term vs legacy** | – | – | – | – | – |
+| Learned rewards for non-analytic terms | **✓ supervised + `corr ≥ 0.9` gate + measured drop table** | – | – | – | – | – |
+| `strict` mode (refuse to start on unevaluable terms) | **✓** | – | – | – | – | – |
+| Input-normalisation A/B with a full curve | **✓ 2.4x @3k, +2–6 % return** | – | – | – | ✓ (ablation) | ~ (adopted) |
+| Velocity controller result | – (4 configs, 0/64) | – | – | **✓ 652/672** | – (implemented, not trained) | – |
+| Multi-GPU data parallel | – | – | **✓ 4×5090, 91 % scaling** | – | – | ✓ |
+| Released weights | – | – | **✓ 223 MB** | ✓ | **✓ policy + WM** | – |
+| Ablations beyond the paper | ~ | **✓ critic/H, push recovery** | – | **✓ H, critic, push, BPTT vs PPO** | ✓ (3 factors) | ~ (bf16, critic features) |
+| Render / viewer tooling | ✓ viewer + clip selector | **✓ render + video tools** | ✓ media | ✓ render rollouts | ✓ MuJoCo play | ✓ video vs RGMT |
+| Tests | ✓ equivalence + smoke | – | ✓ | ✓ | ✓ | **✓ 37 tests** |
+
+### 7.2 Where this repository is genuinely ahead, and where it is not
+
+**Ahead**
+
+1. **Task generality is structural, not documented.** Every other project adds a task by writing a new
+   env/adapter path. Here a task is a `register_mjlab_task` call: rewards and terminations are reflected
+   from `env_cfg`, `rl_cfg` carries only hyper-parameters, and `strict=True` refuses to start when a
+   reward term cannot be evaluated in imagination. The claim is checkable — the analytic path is equal to
+   the legacy implementation to `3.7e-9` on a real transition (§1).
+2. **The largest measured library, with generalisation rather than a single-clip number.** 22,246 clips
+   / 313 h packed to 5.74 GB, and the generalist beats a per-clip specialist *on the same 300 clips*
+   (0.8248 vs 0.7156) — the paper's central claim reproduced with an honest held-out protocol. No other
+   project reports a library of this size that it built itself.
+3. **Reward terms are either exact or provably improvable.** The learned channel is supervised by the
+   environment's own per-term rewards, gated at `corr ≥ 0.9`, and the correlation of every term is
+   published (§2.4) so the drop decision is auditable. Others either implement a term directly or leave
+   it out without measurement.
+4. **Negative results are measured, not asserted.** Velocity tracking ships with four configurations,
+   the exact reason each fails, and the measured ceiling (world-model action sensitivity 11.6 % of the
+   simulator), including two of this project's own measurement errors and their fix (§6).
+
+**Not ahead**
+
+1. **Velocity tracking**: dhmbb2 reports 652/672 commanded conditions; this repository has none (§6).
+2. **Scale of the benchmark**: CuboiLeo reports BONES-SEED with 129,491 clips, 0.930 and 0.11 % failures;
+   our library is a fifth of that and our failure counts are not directly comparable.
+3. **Wall-clock efficiency**: vibed reaches 0.829 with 0/40 in 1.47 h on one RTX PRO 6000; the best
+   single-clip run here takes 8 h on a 4090 (a slower card, but the comparison stands).
+4. **Multi-GPU and released weights**: CuboiLeo shows 91 % scaling on 4×5090 and publishes a checkpoint;
+   this repository is single-GPU and ships no weights.
+5. **Ablation breadth**: dhmbb2 covers H ∈ {16, 32, 64, 128}, with/without critic, push recovery and
+   BPTT-vs-PPO; this repository runs the normalisation A/B and the reward-channel study only.
+
 ---
 
 ## 8. Limitations
