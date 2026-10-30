@@ -159,6 +159,23 @@ python scripts/play.py          --ckpt checkpoints/supermimic_library_24k.pt --n
 > 确实会摔（留出子集 300 条中 8 条；倒地/起身 6 条全失败）。动作的 ±1 截断是归一化，不是安全限位。
 > 实机需要做哪些工作，见 [`checkpoints/README.md`](checkpoints/README.md) 的部署说明。
 
+### 2.6 自带演示数据，开箱可跑
+
+只给权重不给数据很难验证。[`demo/clip_1307`](demo/clip_1307) 提供了一条重定向后的 G1 动作：
+**15,792 帧 @ 50 Hz = 315.84 秒**，包含站立、地面动作、起身与行走，经数据所有者许可以仓库形式发布，
+格式与训练器读取的完全一致（[格式与命令](demo/README.md)）。发布的权重在它上面得分
+**0.849、零失败**。
+
+```bash
+git clone https://github.com/NPCLEI/mjlab_supermimic && cd mjlab_supermimic
+
+# 直接看效果（参考幽灵 vs 策略），不需要另找数据
+python scripts/play.py --ckpt checkpoints/supermimic_library_24k.pt --npz-dir demo/clip_1307 --num-envs 1
+
+# 或用论文协议打分
+python scripts/eval_benchmark.py --ckpt checkpoints/supermimic_library_24k.pt --npz-dir demo/clip_1307
+```
+
 ## 3. 目录结构
 
 ```text

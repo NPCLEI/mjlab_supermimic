@@ -178,6 +178,23 @@ python scripts/play.py          --ckpt checkpoints/supermimic_library_24k.pt --n
 > held-out subset; 6 of 6 on fall/get-up). The action clamp is a normalisation, not a safety limit. See the
 > deployment section in [`checkpoints/README.md`](checkpoints/README.md) for what hardware work would need.
 
+## 2.6 A demo motion, so this runs out of the box
+
+Weights without data are hard to try. [`demo/clip_1307`](demo/clip_1307) contains one retargeted G1 motion --
+**15,792 frames at 50 Hz = 315.84 s** of standing, floor work, getting up and walking -- released with the
+owner's permission, in the same format the trainers read ([format and commands](demo/README.md)). The
+published weights score **0.849, zero failures** on it.
+
+```bash
+git clone https://github.com/NPCLEI/mjlab_supermimic && cd mjlab_supermimic
+
+# watch it (reference ghost vs. the policy), no data hunting, no download step
+python scripts/play.py --ckpt checkpoints/supermimic_library_24k.pt --npz-dir demo/clip_1307 --num-envs 1
+
+# or score it with the paper's protocol
+python scripts/eval_benchmark.py --ckpt checkpoints/supermimic_library_24k.pt --npz-dir demo/clip_1307
+```
+
 ## 3. Repository layout
 
 ```text
@@ -196,6 +213,8 @@ src/tasks/supermimic/
 ├── configs/example_tasks.py # register_mjlab_task(...) examples
 ├── engine/                  # vendored SuperMimic engine (world model, heads, imagination)
 ├── data/                    # npz -> packed library, slicing, manifests
+checkpoints/                 # released weights (see checkpoints/README.md)
+demo/clip_1307/              # one demo motion, so the weights can be run immediately
 scripts/                     # train / play / evaluate / build_library / seed_buffer
 docs/lessons.md               # the full experiment log: what was measured and what failed
 docs/RESULTS.md               # retrospective with every number and date

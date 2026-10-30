@@ -11,3 +11,7 @@ motion_lib*/
 !checkpoints/
 !checkpoints/*.pt
 !checkpoints/README.md
+
+# demo motion data is shipped
+!demo/
+!demo/**/*.npz
