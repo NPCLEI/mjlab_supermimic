@@ -35,7 +35,11 @@ def load_policy_from_checkpoint(path: str | Path, device: str) -> tuple[Policy, 
     pc = ck["config"]["policy"]
     pcfg = PolicyCfg(**{k: (tuple(v) if isinstance(v, list) else v) for k, v in pc.items()})
     policy = Policy(pcfg).to(device)
-    policy.load_state_dict(ck["policy"])
+    missing, unexpected = policy.load_state_dict(ck["policy"], strict=False)
+    # the velocity interface (Appendix B) is absent from checkpoints trained before it existed
+    hard_missing = [k for k in missing if not k.startswith("encoders.velocity.")]
+    if hard_missing or unexpected:
+        raise RuntimeError(f"checkpoint mismatch: missing {hard_missing} unexpected {list(unexpected)}")
     policy.eval()
     return policy, ck["config"]
 

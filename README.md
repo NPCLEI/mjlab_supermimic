@@ -6,16 +6,20 @@ Model](https://arxiv.org/abs/2610.28480)** (CoRL 2026) on the Unitree G1 in
 *declared*, so that adding a task is a two-line registration rather than a new subclass.
 
 <p align="center">
-  <img src="docs/assets/fig1_1307_benchmark.png" width="640">
+  <img src="docs/assets/grid.gif" width="820">
 </p>
+
+<p align="center"><em>One policy, 16 motions from the 300-clip evaluation subset. Rendered by replaying the
+policy's simulated trajectories in MuJoCo (<code>scripts/render_grid.py</code>).</em></p>
 
 | | |
 |---|---|
-| **Single motion (clip 1307, 315.8 s)** | **0.849** normalised return, **15,792 / 15,792 steps, zero failures** — 8 h on one RTX 4090 |
 | **Whole library (22,246 clips, 313 h)** | **0.8248** on a held-out 300-clip subset (8 failures), beating a 300-clip specialist (0.7156); 0.6703 on the six fall/get-up clips |
+| **Single motion (clip 1307, 315.8 s)** | **0.849** normalised return, **15,792 / 15,792 steps, zero failures** — 8 h on one RTX 4090 |
 | **World model** | 1-step normalised error **0.0035–0.0047** (paper: 0.007–0.011) |
 | **Task/RLO separation** | reward + termination reflected from `env.cfg`; analytic path **equal to the legacy implementation to 3.7e-9** |
 | **Velocity tracking** | Appendix-B encoder implemented; from-scratch and encoder variants plateau (§6). The paper reports 650/672 commanded conditions |
+
 
 ---
 
@@ -76,19 +80,7 @@ observation 0.0   termination features 0.0   terminated agrees: True
 
 ## 2. Results
 
-### 2.1 One motion: clip 1307 (315.8 s), 1x4090, 1024 envs, 8 h
-
-| checkpoint | return | steps completed | failures |
-|---|---:|---:|---:|
-| 18,000 | **0.849** | 15,792 / 15,792 | 0 |
-| 19,000 | 0.835 | 15,792 / 15,792 | 0 |
-| 22,000 | 0.820 | fails at 261 s | 1 |
-
-Per-term breakdown of the 0.849 checkpoint: body orientation 72 %, body position 91 %, root position
-81 %, root orientation 97 %, linear velocity 96 %, angular velocity 80 %. World model `nse1 0.0036`,
-`nse8 0.0055`. **Always take the best checkpoint**: the return peaks and then degrades on long clips.
-
-### 2.2 Whole library: 22,246 clips / 11.34 M frames / 313 h
+### 2.1 Whole library: 22,246 clips / 11.34 M frames / 313 h
 
 The library is retargeted from two sources -- **[MotionDecode](https://chingmudata.github.io/MotionDecode/)**
 (the CHINGMU / EnDecodeX optical motion-capture data system, also on
@@ -114,6 +106,22 @@ Packed to 5.74 GB fp16 (including per-clip body arrays), built in 11.6 s. Traine
 The generalist beats the specialist on the same 300 clips, which is the paper's central claim
 (compute grows slowly with library size). Fall/get-up is the weak class: 125 of the 22,246 clips (0.6 %)
 contain a fall, and the paper only drives that class to zero failures after 9.8 h on two GPUs.
+
+### 2.2 One motion: clip 1307 (315.8 s), 1x4090, 1024 envs, 8 h
+
+<p align="center">
+  <img src="docs/assets/fig1_1307_benchmark.png" width="620">
+</p>
+
+| checkpoint | return | steps completed | failures |
+|---|---:|---:|---:|
+| 18,000 | **0.849** | 15,792 / 15,792 | 0 |
+| 19,000 | 0.835 | 15,792 / 15,792 | 0 |
+| 22,000 | 0.820 | fails at 261 s | 1 |
+
+Per-term breakdown of the 0.849 checkpoint: body orientation 72 %, body position 91 %, root position
+81 %, root orientation 97 %, linear velocity 96 %, angular velocity 80 %. World model `nse1 0.0036`,
+`nse8 0.0055`. **Always take the best checkpoint**: the return peaks and then degrades on long clips.
 
 ### 2.3 Input normalisation (A/B, same config, one variable)
 
