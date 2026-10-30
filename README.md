@@ -161,6 +161,23 @@ the `-SM` task does by default and what the paper does by dropping the self-coll
 
 ---
 
+## 2.5 Pretrained weights
+
+The whole-library policy and its world model are in [`checkpoints/supermimic_library_24k.pt`](checkpoints/supermimic_library_24k.pt)
+(69 MB, iteration 24,000): policy (8.91 M params), world model (8.82 M), critic, training config and the
+measured numbers, with the optimiser states stripped. Details, loadable-observation layout and commands are in
+[`checkpoints/README.md`](checkpoints/README.md).
+
+```bash
+python scripts/eval_benchmark.py --ckpt checkpoints/supermimic_library_24k.pt --npz-dir /path/to/motion_dir
+python scripts/play.py          --ckpt checkpoints/supermimic_library_24k.pt --npz-dir /path/to/motion_dir --num-envs 4
+```
+
+> **Not recommended for a real robot.** This is a simulation research artefact: no actuator or latency
+> model, no state estimation, no safety layer, and the policy does fall on some clips (8 of 300 in the
+> held-out subset; 6 of 6 on fall/get-up). The action clamp is a normalisation, not a safety limit. See the
+> deployment section in [`checkpoints/README.md`](checkpoints/README.md) for what hardware work would need.
+
 ## 3. Repository layout
 
 ```text
@@ -297,6 +314,8 @@ how they were fixed).
   not directly comparable to the paper's 129,514-clip benchmark.
 * Rewards for contact-dependent terms cannot be evaluated in imagination; they are dropped (§2.4) rather
   than proxied.
+* **The released weights are simulation-only.** No sim-to-real validation, no state estimation, no safety
+  layer; deploying them on a physical G1 is not recommended (§2.5).
 
 ---
 

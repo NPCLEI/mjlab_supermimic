@@ -144,6 +144,21 @@ observation 0.0   termination features 0.0   terminated 一致
 
 ---
 
+### 2.5 预训练权重
+
+全量库训练得到的策略与世界模型在 [`checkpoints/supermimic_library_24k.pt`](checkpoints/supermimic_library_24k.pt)
+（69 MB，第 24,000 次迭代）：policy（8.91 M 参数）、世界模型（8.82 M）、critic、训练配置与实测指标，已去掉
+优化器状态。观测布局、加载方式与命令见 [`checkpoints/README.md`](checkpoints/README.md)。
+
+```bash
+python scripts/eval_benchmark.py --ckpt checkpoints/supermimic_library_24k.pt --npz-dir /path/to/motion_dir
+python scripts/play.py          --ckpt checkpoints/supermimic_library_24k.pt --npz-dir /path/to/motion_dir --num-envs 4
+```
+
+> **不建议上实机。** 这是仿真研究产物：没有执行器/延迟建模、没有状态估计、没有安全层，而且策略在部分片段上
+> 确实会摔（留出子集 300 条中 8 条；倒地/起身 6 条全失败）。动作的 ±1 截断是归一化，不是安全限位。
+> 实机需要做哪些工作，见 [`checkpoints/README.md`](checkpoints/README.md) 的部署说明。
+
 ## 3. 目录结构
 
 ```text
@@ -264,6 +279,7 @@ vs `wm dv [-0.003, +0.006, -0.022]`），想象里"迈步"几乎不值钱，而�
 * **速度追踪未收敛**（第 6 节）。接口完整且有测试覆盖，结果停在 6–10% 指令。
 * **未使用 BONES-SEED**，全量库用的是 22,246 条重定向片段，失败数不与论文的 129,514 条基准直接可比。
 * 依赖接触的奖励项无法在想象中求值，一律**从奖励中删除**（第 2.4 节），而不是用代理替代。
+* **发布的权重仅限仿真。** 没有 sim-to-real 验证、没有状态估计、没有安全层，不建议部署到实机 G1（第 2.5 节）。
 
 ---
 
