@@ -180,7 +180,8 @@ class Trainer:
             # a resumed run is already past ``warmup_iterations`` while its replay
             # buffer is still empty; wait until a k-step window can be sampled.
             need_rows = max(cfg.wm_trainer.window, cfg.policy_trainer.history) + 2
-            if self.iteration >= sch.warmup_iterations and self.buffer.size >= need_rows:
+            depth = int(self.buffer.ptr.min())  # steps written per env, not rows across envs
+            if self.iteration >= sch.warmup_iterations and depth >= need_rows:
                 self._utd_acc += sch.updates_per_env_step
                 while self._utd_acc >= 1.0:
                     self._utd_acc -= 1.0

@@ -82,10 +82,40 @@ class Policy(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.encoders = nn.ModuleDict({"motion": MotionEncoder(cfg)})
+        # Appendix B: a velocity (command) interface sharing the motion decoder. The command is a
+        # 3-vector (vx, vy, wz) scaled the way the paper's velocity controller scales it.
+        self.velocity_goal_dim = 3
+        self.encoders["velocity"] = MotionEncoder(cfg, goal_dim=self.velocity_goal_dim)
+        with torch.no_grad():
+            self.encoders["velocity"].scale.copy_(
+                torch.tensor([1.0 / 2.0, 1.0 / 1.32, 1.0 / 3.35])
+            )
         self.decoder = Decoder(cfg, cfg.obs_dim)
 
-    def forward(self, obs_hist: torch.Tensor, goal: torch.Tensor, interface: str = "motion") -> torch.Tensor:
+    def forward(self, obs_hist: torch.Tensor, goal: torch.Tensor, interface: str | None = None) -> torch.Tensor:
+        if interface is None:
+            # the imagined rollout and the policy trainer call with two arguments; pick by goal width
+            if goal.shape[-1] == self.velocity_goal_dim:
+                interface = "velocity"
+            else:
+                interface = "motion"
         return self.decoder(self.encoders[interface](goal), obs_hist)
+
+    # ------------------------------------------------------------------ interface helpers
+    def freeze_decoder(self) -> int:
+        """Keep the pretrained decoder fixed so only the new encoder is learned."""
+        n = 0
+        for p in self.decoder.parameters():
+            p.requires_grad_(False)
+            n += p.numel()
+        return n
+
+    def trainable_decoder(self) -> int:
+        n = 0
+        for p in self.decoder.parameters():
+            p.requires_grad_(True)
+            n += p.numel()
+        return n
 
 
 class Critic(nn.Module):

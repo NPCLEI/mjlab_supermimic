@@ -150,6 +150,9 @@ class WmSpec:
     self.report: SpecReport | None = None
     self.reward_cfg = RewardCfgShim(max_step_reward, dt)
     self.action_bound = 1.0
+    # velocity interface: the pretrained decoder was trained on 10 stacked 93-dim frames
+    # the velocity encoder reuses the tracking decoder, which consumes 10 stacked 93-dim frames
+    self.history = 1 if self.heads.__class__.__name__ == 'EnvSyncedHeads' else 10
     self.n_joints = getattr(provider, "n_joints", 29)
     self.anchor_index = int(getattr(heads, "anchor_index", 0))
     self.reward_term_names = tuple(t.name for t in reward_terms if t.kind in ("analytic", "learned"))
@@ -201,6 +204,31 @@ class WmSpec:
       keep = tuple(n for n in self.learned.names if n not in dropped)
       self.learned.names = keep
     return dropped
+
+  # ------------------------------------------------------------------ velocity-encoder interface
+  def _engine_frame(self, env) -> torch.Tensor:
+    """One 93-dim frame of the velocity env in the engine's layout (no command)."""
+    s = self.state(env)
+    prev_a = getattr(self, "_prev_action_cache", None)
+    if prev_a is None or prev_a.shape[0] != s.shape[0]:
+      prev_a = torch.zeros(s.shape[0], self.n_joints, device=s.device)
+    return self.heads.observation_engine(s, prev_a, self.xi(env), self.heads.default_joint_pos)
+
+  def velocity_history(self, env) -> torch.Tensor:
+    """(N, 930) term-major proprioception history -- the layout the tracking decoder was trained on."""
+    from src.tasks.supermimic.adapters.velocity_encoder import HistoryBuffer
+
+    frame = self._engine_frame(env)
+    if getattr(self, "_hist", None) is None or self._hist.n != frame.shape[0]:
+      self._hist = HistoryBuffer(frame.shape[0], frame.device)
+      for _ in range(self.history):
+        self._hist.push(frame)
+    self._hist.push(frame)
+    return self._hist.flat()
+
+  def reset_history(self, ids=None) -> None:
+    if getattr(self, "_hist", None) is not None:
+      self._hist.reset(ids)
 
   # ------------------------------------------------------------------ state / context
   def state(self, env) -> torch.Tensor:
@@ -268,16 +296,19 @@ class WmSpec:
       from supermimic.world_model.heads import analytic_observation
 
       return analytic_observation(s_next, prev_action, xi, default_joint_pos)
+    if hasattr(self.heads, "observation_engine"):
+      return self.heads.observation_engine(s_next, prev_action, xi, self.heads.default_joint_pos)
     return self.heads.observation(s_next, prev_action, xi, default_joint_pos)
 
   def observation(self, env) -> dict[str, torch.Tensor]:
     """Runner surface: the environment's observation dict plus the goal."""
+    if self.heads.__class__.__name__ != "EnvSyncedHeads":
+      # velocity interface: rebuild the engine's 930-dim history; the command goes to the encoder only
+      actor = self.velocity_history(env)
+      goal = self.xi(env)[..., 1:4]
+      return {"policy": actor, "goal": goal}
     obs = env.observation_manager.compute()
     actor = obs["actor"] if "actor" in obs else obs["policy"]
-    if self.heads.__class__.__name__ != "EnvSyncedHeads":
-      # the actor group does not carry the base velocity; append the anchor-like error, exactly as
-      # the imagination path does
-      actor = torch.cat([actor, self.heads.anchor_feature(self.state(env), self.xi(env))], dim=-1)
     frames = int(getattr(self.env.cfg, "future_frames", 10) or 10)
     goal = self.goal_from_command(actor.shape[0], frames)
     return {"policy": actor, "goal": goal}
@@ -295,8 +326,8 @@ class WmSpec:
     return cmd[:n].repeat(1, frames)
 
   def goal_from_command_from_frame(self, start, frames: int) -> torch.Tensor:
-    # per-row command carried in xi (see MjlabStateProvider.xi)
-    return start.xi[..., 1:4].repeat(1, frames)
+    # velocity interface: the command alone (the encoder consumes it), per-row from xi
+    return start.xi[..., 1:4]
 
   def root_error_features(self, s, ref):
     if self.heads.__class__.__name__ == "EnvSyncedHeads":

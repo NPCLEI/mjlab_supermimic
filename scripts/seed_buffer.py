@@ -46,7 +46,9 @@ def main(
   if runner_cls is None:
     from mjlab.rl import MjlabOnPolicyRunner as runner_cls  # type: ignore[no-redef]
   log_dir = Path(ppo_ckpt).parent
-  runner = runner_cls(wrapped, load_rl_cfg(task), str(log_dir), device)
+  from dataclasses import asdict
+
+  runner = runner_cls(wrapped, asdict(load_rl_cfg(task)), str(log_dir), device)
   runner.load(str(ppo_ckpt))
   policy = runner.get_inference_policy(device=device)
   print(f"[seed] loaded {ppo_ckpt}", flush=True)

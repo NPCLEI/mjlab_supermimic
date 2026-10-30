@@ -103,6 +103,13 @@ class VelocityHeads:
     return torch.cat([err_v, err_w, speed], dim=-1)
 
   # ------------------------------------------------------------------ analytic observation
+  def observation_engine(self, s_next, prev_action, xi, default_joint_pos):
+    """93-dim frame in the *engine's* term order, so a pretrained tracking decoder applies unchanged."""
+    from src.tasks.supermimic.engine.supermimic.world_model.heads import projected_gravity, split_state
+
+    _, root_quat, q, _, ang_b, qd = split_state(s_next)
+    return torch.cat([q - default_joint_pos, qd, ang_b, projected_gravity(root_quat), prev_action], dim=-1)
+
   def observation(self, s_next: torch.Tensor, prev_action: torch.Tensor, xi, default_joint_pos) -> torch.Tensor:
     """The velocity task's actor observation, computed from a predicted state.
 
