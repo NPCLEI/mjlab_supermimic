@@ -11,8 +11,8 @@ Model](https://arxiv.org/abs/2610.28480)** (CoRL 2026) on the Unitree G1 in
 
 <p align="center"><em>One policy, <b>16 different kinds of motion</b> -- sprint, jog, jump, martial arts, crawl, ladder climb, carrying,
 fall/get-up, crouch, sit, dance, turn, walk and more -- each chosen as the most dynamic clip of its category
-(<code>scripts/pick_grid_clips.py</code>). Rendered by replaying the policy's simulated trajectories in MuJoCo
-(<code>scripts/render_grid.py</code>).</em></p>
+(<code>scripts/pick_grid_clips.py</code>). Each cell is 12 s of simulated motion, rendered by replaying the policy's trajectories in MuJoCo
+(<code>scripts/render_grid.py</code>).</p>
 
 | | |
 |---|---|

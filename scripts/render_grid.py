@@ -27,7 +27,9 @@ def main() -> None:
   ap.add_argument("--clips", type=int, default=16)
   ap.add_argument("--steps", type=int, default=150, help="150 steps = 3 s at 50 Hz")
   ap.add_argument("--cell", type=int, default=240)
-  ap.add_argument("--fps", type=int, default=25)
+  ap.add_argument("--colors", type=int, default=96, help="GIF palette size; fewer colours means a smaller file")
+  ap.add_argument("--fps", type=int, default=0, help="0 = derive from --stride so playback is real time")
+  ap.add_argument("--stride", type=int, default=2, help="render every Nth simulated step")
   ap.add_argument("--device", default="cuda:0")
   ap.add_argument("--seed", type=int, default=0)
   ap.add_argument("--clips-file", default="", help="one 'path\\tlabel' per line; overrides the random pick")
@@ -114,7 +116,7 @@ def main() -> None:
   nrows = int(np.ceil(n / ncols))
   tile = Image.new("RGB", (ncols * args.cell, nrows * args.cell), (18, 20, 24))
   frames = []
-  for t in range(0, args.steps, 2):
+  for t in range(0, args.steps, args.stride):
     for i in range(n):
       data.qpos[:] = traj[t, i]
       data.qpos[3:7] /= max(np.linalg.norm(traj[t, i, 3:7]), 1e-6)  # MuJoCo wants unit quats
@@ -133,11 +135,15 @@ def main() -> None:
       draw.text((x + 2, y + 2), names[i], fill=(120, 200, 255))
     frames.append(frame)
 
+  fps = args.fps or (50.0 / args.stride)
   out = Path(args.out)
   out.parent.mkdir(parents=True, exist_ok=True)
-  frames[0].save(out, save_all=True, append_images=frames[1:], duration=int(1000 / args.fps),
-                 loop=0, optimize=True)
-  print(f"[render] wrote {out} ({len(frames)} frames, {out.stat().st_size / 1e6:.1f} MB)", flush=True)
+  # GIF is palettised; fewer colours keeps a 10 s 4x4 grid inside a sane file size
+  pal = [f.convert("P", palette=Image.ADAPTIVE, colors=args.colors) for f in frames]
+  pal[0].save(out, save_all=True, append_images=pal[1:], duration=int(1000 / fps),
+              loop=0, optimize=True, disposal=1)
+  print(f"[render] wrote {out} ({len(pal)} frames, {len(pal) / fps:.1f}s, "
+        f"{out.stat().st_size / 1e6:.1f} MB)", flush=True)
   frames[len(frames) // 2].save(out.with_suffix(".png"))
 
 
