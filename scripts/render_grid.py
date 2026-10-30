@@ -30,6 +30,7 @@ def main() -> None:
   ap.add_argument("--fps", type=int, default=25)
   ap.add_argument("--device", default="cuda:0")
   ap.add_argument("--seed", type=int, default=0)
+  ap.add_argument("--clips-file", default="", help="one 'path\\tlabel' per line; overrides the random pick")
   args = ap.parse_args()
 
   import mujoco
@@ -39,10 +40,22 @@ def main() -> None:
   from supermimic.envs.mdp.motion_library import discover_npz
   from supermimic.eval.benchmark import load_policy_from_checkpoint
 
-  npz = discover_npz(args.npz_dir)
-  rng = np.random.default_rng(args.seed)
-  picks = np.sort(rng.choice(len(npz), size=min(args.clips, len(npz)), replace=False))
-  files = [npz[i] for i in picks]
+  labels: list[str] = []
+  if args.clips_file:
+    for line in Path(args.clips_file).read_text().splitlines():
+      if not line.strip():
+        continue
+      parts = line.split("\t")
+      labels.append(parts[1].strip() if len(parts) > 1 else f"#{len(labels) + 1}")
+      # the listed paths stay in order
+      Path(args.clips_file)
+    files = [line.split("\t")[0].strip() for line in Path(args.clips_file).read_text().splitlines() if line.strip()]
+    npz = files
+  else:
+    npz = discover_npz(args.npz_dir)
+    rng = np.random.default_rng(args.seed)
+    picks = np.sort(rng.choice(len(npz), size=min(args.clips, len(npz)), replace=False))
+    files = [npz[i] for i in picks]
 
   env_args = SuperMimicEnvCfgArgs(
     npz_files=files,
@@ -70,14 +83,12 @@ def main() -> None:
   cmd.forced_frame[:] = lib.clip_start[torch.arange(n, device=args.device)]
 
   def short_name(path: str, index: int) -> str:
-    # the 300-clip subset carries cryptic retarget ids; a cell number is more legible than a clipped id
-    return f"#{index + 1}"
+    # prefer the category label from --clips-file; otherwise the retarget id is unreadable, so number it
+    return labels[index] if index < len(labels) else f"#{index + 1}"
 
   names = [short_name(f, i) for i, f in enumerate(files)]
   obs, _ = env.reset()
 
-  # qpos (n, 36) per step, in the engine's state layout
-  traj = np.zeros((args.steps, n, 36), dtype=np.float32)
   # qpos (n, 36) per step, in the engine state layout
   traj = np.zeros((args.steps, n, 36), dtype=np.float32)
 

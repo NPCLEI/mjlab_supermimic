@@ -8,8 +8,9 @@ MuJoCo Warp 上的复现；并对"如何声明一个 SuperMimic 任务"做了重
   <img src="docs/assets/grid.gif" width="820">
 </p>
 
-<p align="center"><em>同一个策略，16 条来自 300 条评测子集的动作。渲染方式：把策略在仿真中的轨迹回放到
-MuJoCo 里（<code>scripts/render_grid.py</code>）。</em></p>
+<p align="center"><em>同一个策略，<b>16 种不同类型的动作</b>——冲刺、慢跑、跳跃、武术、爬行、爬梯、搬运、倒地起身、下蹲、坐姿、
+舞蹈、转身、行走等，每类挑选幅度最大的一条（<code>scripts/pick_grid_clips.py</code>）。渲染方式：把策略在仿真中的
+轨迹回放到 MuJoCo 里（<code>scripts/render_grid.py</code>）。</em></p>
 
 | 项目 | 结果 |
 |---|---|

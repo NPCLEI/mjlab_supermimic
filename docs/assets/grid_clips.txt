@@ -1,0 +1,16 @@
+/home/tcs/8t01/humanoid/eewbc/motion_lib_300/230713__panic_run_away_360_R_001__A428.csv.npz	sprint
+/home/tcs/8t01/humanoid/eewbc/motion_lib_300/230907__jog_arc_cw_start_R_very_fast_001__A454.csv.npz	jog
+/home/tcs/8t01/humanoid/eewbc/motion_lib_300/any4hdmi-g1-amass__motions__EyesJapanDataset__aita__jump-11-warmup-aita_stageii__000000_001000.npz.npz	jump
+/home/tcs/8t01/humanoid/eewbc/motion_lib_300/LAFAN1_g1__g1__fight1_subject5.npz_1.npz	martial
+/home/tcs/8t01/humanoid/eewbc/motion_lib_300/230120__crawl_ff_stop_225_005__A133.csv.npz	crawl
+/home/tcs/8t01/humanoid/eewbc/motion_lib_300/230323__ladder_climbing_up_start_R_006_ns__A300_M.csv.npz	climb
+/home/tcs/8t01/humanoid/eewbc/motion_lib_300/231004__throw_trash_to_the_bin_R_001__A456.csv.npz	carry
+/home/tcs/8t01/humanoid/eewbc/motion_lib_300/231010__faint_stand_up_lying_puke_walk_ff_180_R_001__A474.csv.npz	ground
+/home/tcs/8t01/humanoid/eewbc/motion_lib_300/any4hdmi-g1-amass__motions__KIT__3__kneel_down_with_stool_right_hand04_stageii__000000_000326.npz.npz	crouch
+/home/tcs/8t01/humanoid/eewbc/motion_lib_300/220721__sitting_legs_cross_arms_front_loop_001__A034.csv.npz	sit
+/home/tcs/8t01/humanoid/eewbc/motion_lib_300/221010__itching_left_body_side_R001__A048_M.csv.npz	itch
+/home/tcs/8t01/humanoid/eewbc/motion_lib_300/230411__dance_basic_double_slide_270_R_fast_001__A309.csv.npz	dance
+/home/tcs/8t01/humanoid/eewbc/motion_lib_300/231005__smoke_turn_walk_ff_360_start_R_001__A461.csv.npz	turn
+/home/tcs/8t01/humanoid/eewbc/motion_lib_300/231024__walk_the_dog_ff_225_pull_leash_R_001__A493.csv.npz	walk
+/home/tcs/8t01/humanoid/eewbc/motion_lib_300/any4hdmi-g1-amass__motions__KIT__421__push_recovery_stand_right08_stageii__000000_000301.npz.npz	idle
+/home/tcs/8t01/humanoid/eewbc/motion_lib_300/any4hdmi-g1-amass__motions__CMU__135__135_02_stageii__001000_002000.npz.npz	other
