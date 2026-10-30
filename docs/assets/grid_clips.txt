@@ -9,7 +9,7 @@
 /home/tcs/8t01/humanoid/eewbc/motion_lib_300/any4hdmi-g1-amass__motions__KIT__3__kneel_down_with_stool_right_hand04_stageii__000000_000326.npz.npz	crouch
 /home/tcs/8t01/humanoid/eewbc/motion_lib_300/220721__sitting_legs_cross_arms_front_loop_001__A034.csv.npz	sit
 /home/tcs/8t01/humanoid/eewbc/motion_lib_300/221010__itching_left_body_side_R001__A048_M.csv.npz	itch
-/home/tcs/8t01/humanoid/eewbc/motion_lib_300/230411__dance_basic_double_slide_270_R_fast_001__A309.csv.npz	dance
+/home/tcs/8t01/humanoid/eewbc/motion_lib_300/230414__dance_vouge_pivot_walks_180_R_loop_fast_001__A325.csv.npz	dance
 /home/tcs/8t01/humanoid/eewbc/motion_lib_300/231005__smoke_turn_walk_ff_360_start_R_001__A461.csv.npz	turn
 /home/tcs/8t01/humanoid/eewbc/motion_lib_300/231024__walk_the_dog_ff_225_pull_leash_R_001__A493.csv.npz	walk
 /home/tcs/8t01/humanoid/eewbc/motion_lib_300/any4hdmi-g1-amass__motions__KIT__421__push_recovery_stand_right08_stageii__000000_000301.npz.npz	idle
