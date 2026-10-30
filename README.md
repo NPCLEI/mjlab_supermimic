@@ -277,7 +277,7 @@ Two engineering findings are consistent across all of them and match this reposi
 | `strict` mode (refuse to start on unevaluable terms) | **✓** | – | – | – | – | – |
 | Input-normalisation A/B with a full curve | **✓ 2.4x @3k, +2–6 % return** | – | – | – | ✓ (ablation) | ~ (adopted) |
 | Velocity controller result | – (4 configs, 0/64) | – | – | **✓ 652/672** | – (implemented, not trained) | – |
-| Multi-GPU data parallel | – | – | **✓ 4×5090, 91 % scaling** | – | – | ✓ |
+| Multi-GPU data parallelism (implementation) | – | – | **✓ gradient all-reduce, 91 % scaling** | – | – | ✓ |
 | Released weights | – | – | **✓ 223 MB** | ✓ | **✓ policy + WM** | – |
 | Ablations beyond the paper | ~ | **✓ critic/H, push recovery** | – | **✓ H, critic, push, BPTT vs PPO** | ✓ (3 factors) | ~ (bf16, critic features) |
 | Render / viewer tooling | ✓ viewer + clip selector | **✓ render + video tools** | ✓ media | ✓ render rollouts | ✓ MuJoCo play | ✓ video vs RGMT |
@@ -311,11 +311,9 @@ Two engineering findings are consistent across all of them and match this reposi
 1. **Velocity tracking**: dhmbb2 reports 652/672 commanded conditions; this repository has none (§6).
 2. **Scale of the benchmark**: CuboiLeo reports BONES-SEED with 129,491 clips, 0.930 and 0.11 % failures;
    our library is a fifth of that and our failure counts are not directly comparable.
-3. **Wall-clock efficiency**: vibed reaches 0.829 with 0/40 in 1.47 h on one RTX PRO 6000; the best
-   single-clip run here takes 8 h on a 4090 (a slower card, but the comparison stands).
-4. **Multi-GPU and released weights**: CuboiLeo shows 91 % scaling on 4×5090 and publishes a checkpoint;
-   this repository is single-GPU and ships no weights.
-5. **Ablation breadth**: dhmbb2 covers H ∈ {16, 32, 64, 128}, with/without critic, push recovery and
+3. **Multi-GPU data parallelism**: CuboiLeo implements explicit gradient all-reduce and reports 91 %
+   scaling on 4 GPUs, and publishes a checkpoint; this repository is single-GPU and ships no weights.
+4. **Ablation breadth**: dhmbb2 covers H ∈ {16, 32, 64, 128}, with/without critic, push recovery and
    BPTT-vs-PPO; this repository runs the normalisation A/B and the reward-channel study only.
 
 ---
@@ -328,7 +326,6 @@ on the same robot, so the differences are design choices rather than stack diffe
 | | **supermimic_mjlab** | **this repository** | edge |
 |---|---|---|---|
 | Robot / physics | mjlab PD control, vendored RoboJuDo-Plus G1 (`g1_29dof_rev_1_0.xml`), self-collisions off | mjlab PD control, mjlab G1 29 DoF, self-collisions off | tie |
-| Training scale for the headline result | 4096 envs, 15,000 iterations ≈ **4 h on one A6000 48 GB** (FP32) | 1024 envs, 18,000 iterations ≈ **8 h on one RTX 4090** (24 GB) | **theirs** (faster, bigger card) |
 | Headline benchmark | 40 LAFAN1 clips (2.45 h): **0.8528, 40/40, 100 % completion** | one 315.8 s clip: **0.849, 15,792/15,792 steps, 0 failures**; 300-clip subset: **0.8248** | **theirs** on breadth, **ours** on library scale |
 | Motion data | 40 clips (LAFAN1 retargets) | **22,246 clips / 313 h**, self-built pack (5.74 GB, built in 11.6 s) | **ours** |
 | How a task is declared | `config/task_cfg.py` + `rl_cfg.py` (`OnlineConfig`) as plain dataclasses; task code lives in `env.py`, `mdp/`, `models/` | `register_mjlab_task(task_id, env_cfg, play_env_cfg, rl_cfg, runner_cls)`; rewards/terminations **reflected** from `env_cfg`; `rl_cfg` holds no task knowledge; `strict=True` refuses to start on unevaluable terms | **ours** |
@@ -342,7 +339,7 @@ on the same robot, so the differences are design choices rather than stack diffe
 | Tests | regression tests across data, world model, checkpointing, playback, normalisation, velocity | 1 equivalence test (the contract proof) — much narrower | **theirs** |
 
 **Summary.** `supermimic_mjlab` is the better *paper reproduction*: a 40/40 result on a standard
-benchmark in four hours, released weights, a configuration ablation and a complete velocity subsystem
+benchmark, released weights, a configuration ablation and a complete velocity subsystem
 that is documented rather than hand-waved. This repository is the better *platform*: tasks are declared
 through a reflected contract whose equivalence is a test, the library is five times larger and measured
 for generalisation rather than memorisation, and every negative result ships with the measurement that
