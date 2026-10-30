@@ -171,21 +171,24 @@ docs/RESULTS.md               # retrospective with every number and date
 ## 4. Quickstart
 
 ```bash
-# single clip
-python -m supermimic.scripts.train \
-  --data.npz-dir /path/to/motion_lib_1 \
+# single clip: 8 h, one GPU
+python scripts/train_tracking.py --adapter tracking --data.npz-dir /path/to/motion_lib_1 \
   --env.num-envs 1024 --env.episode-length-s 20 --env.anchor-obs \
   --schedule.max-hours 8 --run-name one
 
-# whole library (build the pack first)
+# whole library (pack it first, then train on the pack)
 python scripts/build_library.py --npz-dir /path/to/motions --out data/library_motion
-python -m supermimic.scripts.train --data.library data/library_motion --env.num-envs 4096 ...
+python scripts/train_tracking.py --adapter tracking --data.library data/library_motion \
+  --env.num-envs 4096 --env.anchor-obs --schedule.max-hours 8 --run-name library
 
-# evaluate with the paper's Appendix-F protocol, and play it back
+# paper Appendix-F benchmark (every clip once, deterministic) and interactive replay
 python scripts/eval_benchmark.py --ckpt logs/one/ckpt_0018000.pt --npz-dir /path/to/motion_lib_1
-python -m supermimic.scripts.play_ref --ckpt logs/one/ckpt_0018000.pt --clip-index 1307
+python scripts/play.py --ckpt logs/one/ckpt_0018000.pt --npz-dir /path/to/motion_lib_1 --num-envs 4
+python scripts/play.py --ckpt logs/one/ckpt_0018000.pt --npz-dir /path/to/motion_lib_1 --clip-index 1307
 ```
 
+The engine's own entry point (`python -m supermimic.scripts.train ...`, with `PYTHONPATH` pointing at
+`src/tasks/supermimic/engine`) takes the same flags; `scripts/train_tracking.py` is the mjlab-side wrapper.
 Long jobs: use `systemd-run --user --unit=...`; tmux and `setsid` die with the ssh cgroup.
 
 ---

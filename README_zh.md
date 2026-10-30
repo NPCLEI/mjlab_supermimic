@@ -157,20 +157,24 @@ docs/RESULTS.md               # 带日期与全部数字的回溯
 ## 4. 快速开始
 
 ```bash
-# 单条
-python -m supermimic.scripts.train \
-  --data.npz-dir /path/to/motion_lib_1 \
+# 单条：8 小时、单卡
+python scripts/train_tracking.py --adapter tracking --data.npz-dir /path/to/motion_lib_1 \
   --env.num-envs 1024 --env.episode-length-s 20 --env.anchor-obs \
   --schedule.max-hours 8 --run-name one
 
-# 全量库（先打包）
+# 全量库（先打包，再在包上训练）
 python scripts/build_library.py --npz-dir /path/to/motions --out data/library_motion
-python -m supermimic.scripts.train --data.library data/library_motion --env.num-envs 4096 ...
+python scripts/train_tracking.py --adapter tracking --data.library data/library_motion \
+  --env.num-envs 4096 --env.anchor-obs --schedule.max-hours 8 --run-name library
 
-# 论文附录 F 协议评测 + 回放
+# 论文附录 F 协议评测 + 交互回放
 python scripts/eval_benchmark.py --ckpt logs/one/ckpt_0018000.pt --npz-dir /path/to/motion_lib_1
-python -m supermimic.scripts.play_ref --ckpt logs/one/ckpt_0018000.pt --clip-index 1307
+python scripts/play.py --ckpt logs/one/ckpt_0018000.pt --npz-dir /path/to/motion_lib_1 --num-envs 4
+python scripts/play.py --ckpt logs/one/ckpt_0018000.pt --npz-dir /path/to/motion_lib_1 --clip-index 1307
 ```
+
+引擎自带入口 `python -m supermimic.scripts.train ...`（`PYTHONPATH` 指向 `src/tasks/supermimic/engine`）
+接受同样的参数；`scripts/train_tracking.py` 是 mjlab 侧的封装。
 
 长任务用 `systemd-run --user --unit=...`；tmux/setsid 会随 ssh cgroup 一起被杀。
 
