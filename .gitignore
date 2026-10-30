@@ -6,3 +6,8 @@ logs/
 *.npy
 motion_lib*/
 .tb/
+
+# the released inference checkpoint is shipped; training snapshots are not
+!checkpoints/
+!checkpoints/*.pt
+!checkpoints/README.md
