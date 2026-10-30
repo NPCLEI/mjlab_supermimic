@@ -1,11 +1,13 @@
-"""Render a 4x4 grid of the generalist policy tracking 16 motions, into a GIF for the README.
+"""Render a 4x4 grid of the policy tracking 16 motions, into a GIF for the README.
 
-The policy runs in the same environment the benchmark uses (MuJoCo Warp); rendering is done by replaying
-the recorded ``qpos`` in CPU MuJoCo, which avoids the Warp offscreen path and works headless. One GIF,
-16 clips, 3 s each, camera following the robot.
+Each clip is simulated **on its own** (one environment, one clip, stopped at its own last frame and then
+held), because a shared 16-env rollout makes every cell reset when the shortest clip ends -- the grid
+visibly "ends together" even though the motions did not. Rendering is done by replaying the recorded
+``qpos`` in CPU MuJoCo, which avoids the Warp offscreen path and works headless.
 
-    MUJOCO_GL=egl PYTHONPATH=. python scripts/render_grid.py \
-        --ckpt <whole-library ckpt> --npz-dir <motion_lib_300> --out docs/assets/grid.gif
+    MUJOCO_GL=egl PYTHONPATH=.:src/tasks/supermimic/engine python scripts/render_grid.py \
+        --ckpt <ckpt> --npz-dir <dir> --clips-file docs/assets/grid_clips.txt \
+        --out docs/assets/grid.gif --steps 600 --stride 3 --cell 190 --colors 48
 """
 
 from __future__ import annotations
@@ -19,20 +21,40 @@ import torch
 G1_XML = "/home/tcs/1t01/envs/capylab/lib/python3.10/site-packages/mjlab/asset_zoo/robots/unitree_g1/xmls/g1.xml"
 
 
+def clamp_to_limits(model, qpos: np.ndarray) -> np.ndarray:
+  """Keep the replayed pose inside the model's hinge ranges.
+
+  The policy's raw joint targets can sit outside a hinge limit for a frame or two; the simulator's
+  constraint solver pulls them back, but replaying qpos directly would show a hyper-extended knee.
+  Clamping makes the figure show the pose the simulator actually enforces.
+  """
+  import mujoco
+
+  out = qpos.copy()
+  for j in range(model.njnt):
+    if model.jnt_type[j] != mujoco.mjtJoint.mjJNT_HINGE:
+      continue
+    lo, hi = model.jnt_range[j]
+    if hi > lo:
+      a = model.jnt_qposadr[j]
+      out[a] = min(max(out[a], lo), hi)
+  return out
+
+
 def main() -> None:
   ap = argparse.ArgumentParser()
   ap.add_argument("--ckpt", required=True)
   ap.add_argument("--npz-dir", required=True)
   ap.add_argument("--out", default="docs/assets/grid.gif")
   ap.add_argument("--clips", type=int, default=16)
-  ap.add_argument("--steps", type=int, default=150, help="150 steps = 3 s at 50 Hz")
-  ap.add_argument("--cell", type=int, default=240)
-  ap.add_argument("--colors", type=int, default=96, help="GIF palette size; fewer colours means a smaller file")
+  ap.add_argument("--clips-file", default="", help="one 'path<TAB>label' per line; overrides the random pick")
+  ap.add_argument("--steps", type=int, default=600, help="steps per clip; 50 Hz, so 600 = 12 s")
+  ap.add_argument("--cell", type=int, default=190)
+  ap.add_argument("--colors", type=int, default=48, help="GIF palette size; fewer colours means a smaller file")
+  ap.add_argument("--stride", type=int, default=3, help="render every Nth simulated step; playback fps = 50/N")
   ap.add_argument("--fps", type=int, default=0, help="0 = derive from --stride so playback is real time")
-  ap.add_argument("--stride", type=int, default=2, help="render every Nth simulated step")
   ap.add_argument("--device", default="cuda:0")
   ap.add_argument("--seed", type=int, default=0)
-  ap.add_argument("--clips-file", default="", help="one 'path\\tlabel' per line; overrides the random pick")
   args = ap.parse_args()
 
   import mujoco
@@ -42,66 +64,68 @@ def main() -> None:
   from supermimic.envs.mdp.motion_library import discover_npz
   from supermimic.eval.benchmark import load_policy_from_checkpoint
 
+  # ------------------------------------------------ the clip list
   labels: list[str] = []
   if args.clips_file:
+    files: list[str] = []
     for line in Path(args.clips_file).read_text().splitlines():
       if not line.strip():
         continue
       parts = line.split("\t")
-      labels.append(parts[1].strip() if len(parts) > 1 else f"#{len(labels) + 1}")
-      # the listed paths stay in order
-      Path(args.clips_file)
-    files = [line.split("\t")[0].strip() for line in Path(args.clips_file).read_text().splitlines() if line.strip()]
-    npz = files
+      files.append(parts[0].strip())
+      labels.append(parts[1].strip() if len(parts) > 1 and parts[1].strip() else f"#{len(files)}")
   else:
     npz = discover_npz(args.npz_dir)
     rng = np.random.default_rng(args.seed)
     picks = np.sort(rng.choice(len(npz), size=min(args.clips, len(npz)), replace=False))
     files = [npz[i] for i in picks]
+    labels = [f"#{i + 1}" for i in range(len(files))]
 
-  env_args = SuperMimicEnvCfgArgs(
-    npz_files=files,
-    num_envs=len(files),
-    future_frames=10,
-    episode_length_s=1.0e5,
-    action_noise_std=0.0,
-    obs_noise=False,
-    reset_noise=False,
-    domain_randomization=False,
-    sampling_mode="start",
-    record_transitions=False,
-    seed=args.seed,
-    anchor_obs=True,
-  )
-  env = make_env(env_args, device=args.device)
-  cmd = env.command_manager.get_term("motion")
-  lib = cmd.library
-  robot = env.scene["robot"]
-
-  policy, cfg = load_policy_from_checkpoint(args.ckpt, args.device)
+  policy, _cfg = load_policy_from_checkpoint(args.ckpt, args.device)
   policy.eval()
 
+  # ------------------------------------------------ simulate one clip at a time
   n = len(files)
-  cmd.forced_frame[:] = lib.clip_start[torch.arange(n, device=args.device)]
+  trajs: list[np.ndarray] = []
+  for i, f in enumerate(files):
+    env_args = SuperMimicEnvCfgArgs(
+      npz_files=[f],
+      num_envs=1,
+      future_frames=10,
+      episode_length_s=1.0e5,   # the clip end decides; one clip never truncates another
+      action_noise_std=0.0,
+      obs_noise=False,
+      reset_noise=False,
+      domain_randomization=False,
+      sampling_mode="start",
+      record_transitions=False,
+      seed=args.seed,
+      anchor_obs=True,
+    )
+    env = make_env(env_args, device=args.device)
+    cmd = env.command_manager.get_term("motion")
+    robot = env.scene["robot"]
+    cmd.forced_frame[:] = cmd.library.clip_start[:1]
+    obs, _ = env.reset()
 
-  def short_name(path: str, index: int) -> str:
-    # prefer the category label from --clips-file; otherwise the retarget id is unreadable, so number it
-    return labels[index] if index < len(labels) else f"#{index + 1}"
-
-  names = [short_name(f, i) for i, f in enumerate(files)]
-  obs, _ = env.reset()
-
-  # qpos (n, 36) per step, in the engine state layout
-  traj = np.zeros((args.steps, n, 36), dtype=np.float32)
-
-  for t in range(args.steps):
-    with torch.no_grad():
-      act = policy(obs["policy"], obs["goal"])
-    obs, rew, term, tout, _ = env.step(act)
-    q = torch.cat([robot.data.root_link_pos_w, robot.data.root_link_quat_w,
-                   robot.data.joint_pos], dim=-1)[:, :36]
-    traj[t] = q.detach().cpu().numpy()
-  env.close()
+    traj = np.zeros((args.steps, 36), dtype=np.float32)
+    ended = 0
+    for t in range(args.steps):
+      with torch.no_grad():
+        act = policy(obs["policy"], obs["goal"])
+      obs, _rew, term, _tout, _ = env.step(act)
+      q = torch.cat([robot.data.root_link_pos_w, robot.data.root_link_quat_w,
+                     robot.data.joint_pos], dim=-1)[0, :36]
+      traj[t] = q.detach().cpu().numpy()
+      if bool(term[0]):
+        # clip finished (or the policy fell): hold the last frame rather than reset into a jump
+        ended = t
+        traj[t + 1 :] = traj[t]
+        break
+    env.close()
+    trajs.append(traj)
+    state = f"ended at {ended / 50:.1f}s" if ended else "ran the full window"
+    print(f"[render] {i + 1:2d}/{n} {labels[i]:8s} {state}", flush=True)
 
   # ------------------------------------------------ CPU MuJoCo replay
   model = mujoco.MjModel.from_xml_path(G1_XML)
@@ -118,27 +142,25 @@ def main() -> None:
   frames = []
   for t in range(0, args.steps, args.stride):
     for i in range(n):
-      data.qpos[:] = traj[t, i]
-      data.qpos[3:7] /= max(np.linalg.norm(traj[t, i, 3:7]), 1e-6)  # MuJoCo wants unit quats
+      data.qpos[:] = clamp_to_limits(model, trajs[i][t])
+      data.qpos[3:7] /= max(np.linalg.norm(trajs[i][t, 3:7]), 1e-6)  # MuJoCo wants unit quaternions
       data.qvel[:] = 0.0
       mujoco.mj_forward(model, data)
       root = data.qpos[:3]
       cam.lookat[:] = [root[0], root[1], root[2] * 0.9]
       renderer.update_scene(data, camera=cam, scene_option=opts)
-      img = Image.fromarray(renderer.render())
-      tile.paste(img, ((i % ncols) * args.cell, (i // ncols) * args.cell))
+      tile.paste(Image.fromarray(renderer.render()), ((i % ncols) * args.cell, (i // ncols) * args.cell))
 
     frame = tile.copy()
     draw = ImageDraw.Draw(frame)
     for i in range(n):
       x, y = (i % ncols) * args.cell + 6, (i // ncols) * args.cell + 4
-      draw.text((x + 2, y + 2), names[i], fill=(120, 200, 255))
+      draw.text((x + 2, y + 2), labels[i], fill=(120, 200, 255))
     frames.append(frame)
 
   fps = args.fps or (50.0 / args.stride)
   out = Path(args.out)
   out.parent.mkdir(parents=True, exist_ok=True)
-  # GIF is palettised; fewer colours keeps a 10 s 4x4 grid inside a sane file size
   pal = [f.convert("P", palette=Image.ADAPTIVE, colors=args.colors) for f in frames]
   pal[0].save(out, save_all=True, append_images=pal[1:], duration=int(1000 / fps),
               loop=0, optimize=True, disposal=1)
